@@ -157,7 +157,7 @@ phoenix_plus_inference(model, input, output, PHOENIX_PLUS_AUTO_PARALLEL);
 ```python
 import torch
 from orca.pytorch import PhoenixPlusCompiler
-// Compile for dual-die Phoenix+
+# Compile for dual-die Phoenix+
 model = torch.compile(
     model,
     backend='phoenix_plus',

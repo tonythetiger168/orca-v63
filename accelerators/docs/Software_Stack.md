@@ -265,7 +265,7 @@ phoenix_plus_inference(model, input, output, PHOENIX_PLUS_AUTO_PARALLEL);
 ### 5.1 Performance Counters
 All generations expose hardware performance counters:
 | Counter | v5.0 | v5.1 | v5.2 | v6.0 | v6.1 | v6.2 | Description |
-|:|:---|:---|:---|:---|:---|:---|:---|
+|:---|:---|:---|:---|:---|:---|:---|:---|
 | `OPS_TOTAL` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Total MAC operations executed |
 | `CYCLES_BUSY` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Cycles NPU is active |
 | `CYCLES_IDLE` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Cycles NPU is idle |
@@ -399,7 +399,7 @@ else ifeq ($(TARGET),phoenix-e)
     LDFLAGS += -lorca_phoenix
 else ifeq ($(TARGET),phoenix-plus)
     LDFLAGS += -lorca_phoenix_plus
-endif()
+endif
 ```
 
 ---
