@@ -510,68 +510,65 @@ module f3_cmt_tb;
       a_fp[i] = 1'($urandom);
     end
     @(negedge clk);  a_valid = '0;
+    @(negedge clk);
     for (int t = 0; t < 4; t++) begin
-      for (int r = 0; r < 32; r += 7) begin
-        dbg_tid = tid_t'(t);  dbg_rda = arch_reg_idx_t'(r);  dbg_fp = r[0];  #1;
-      end
+      dbg_tid = tid_t'(t);  dbg_rda = 5'd3;  dbg_fp = 0; #1;
+      dbg_fp = 1; #1;
     end
     @(negedge clk);
 
+    repeat (3) @(negedge clk);
     if (errors == 0) $display("F3_CMT_TB PASS");
     else             $display("F3_CMT_TB FAIL errors=%0d", errors);
     $finish;
   end
 
-  // ---------------- 探針 ----------------
-  int rob_full_seen = 0;
+  // ---------------- monitors ----------------
+  logic rob_full_seen = 0;
+  logic ret_exc_seen  = 0;
   always_ff @(posedge clk) begin
     if (rst_n) begin
-      if (flush_pipeline) begin
-        exc_flush_seen <= 1;
-        $display("  flush: pc=%h", flush_redirect_pc);
+      if (|rob_full) rob_full_seen <= 1'b1;
+      if (retire_exception) ret_exc_seen <= 1'b1;
+      if (flush_pipeline && flush_redirect_pc == 64'h8000_0000) exc_flush_seen <= 1;
+      if (u_rob.retire_exception) ret_exc_seen <= 1'b1;
+      // branch-at-retire break 觀測: retire 迴圈遇 is_branch && imm[0]!=taken
+      for (int t = 0; t < SMT_THREADS; t++) begin
+        automatic rob_idx_t h = u_rob.thread_base(tid_t'(t)) + u_rob.head[t];
+        if (u_rob.rob_array[h].valid && u_rob.rob_array[h].complete &&
+            u_rob.rob_array[h].uop.is_branch &&
+            (u_rob.rob_array[h].branch_taken != u_rob.rob_array[h].uop.imm[0]))
+          brk_seen <= 1;
       end
-      if (retire_valid[0] && retire_entry[0].uop.is_branch && complete[0] == 0 && retire_tid[0] == 0 && brk_seen == 0) begin
-        brk_seen <= 1;
-      end
-      if (|rob_full) rob_full_seen <= 1;
     end
   end
 
-  int ret_exc_seen = 0;
-  always_ff @(posedge clk) begin
-    if (rst_n && retire_exception) ret_exc_seen <= 1;
-  end
-
-  // retire_count comb 唯讀探針 (計算本拍 retire_valid 的 popcount, 供 model 對帳)
   function automatic int retire_count_dbg();
-    int c;
-    c = 0;
-    for (int i = 0; i < RETIRE_WIDTH; i++) c += retire_valid[i];
+    int c = 0;
+    for (int i = 0; i < RETIRE_WIDTH; i++) if (retire_valid[i]) c++;
     return c;
+  endfunction
+
+  function automatic int disp_head0();
+    return int'(u_rob.head[0]);
   endfunction
 
   // ---------------- toggle soup 鏡像: 全輸入每拍隨機 ----------------
   always_ff @(posedge clk) begin
     if (soup_en) begin
       for (int i = 0; i < DISPATCH_WIDTH; i++) begin
-        disp_valid[i]  <= 1'($urandom);
-        disp_tid[i]    <= tid_t'($urandom);
-        disp_uop[i]    <= uop_t'({16{$urandom}});
+        disp_valid[i] <= 1'($urandom);
+        disp_tid[i]   <= tid_t'($urandom);
+        disp_uop[i]   <= uop_t'({16{$urandom}});
       end
-      complete         <= ROB_ENTRIES'($urandom);
-      complete_exc     <= ROB_ENTRIES'($urandom);
-      for (int i = 0; i < ROB_ENTRIES; i++) begin
-        complete_data[i]     <= xword_t'({$urandom, $urandom});
-        complete_exc_code[i] <= exception_t'({$urandom, $urandom});
-      end
-      br_mispredict    <= 1'($urandom);
+      br_mispredict <= 1'($urandom);
       br_mispredict_rob_idx <= rob_idx_t'($urandom);
       br_mispredict_target_pc <= {$urandom, $urandom};
       for (int i = 0; i < RETIRE_WIDTH; i++) begin
         t_valid[i] <= 1'($urandom);
         t_tid[i]   <= tid_t'($urandom);
         t_pc[i]    <= {$urandom, $urandom};
-        t_exc[i]   <= exception_t'({$urandom, $urandom});
+        t_exc[i]   <= exception_t'({$urandom, $urandom, $urandom});
         a_valid[i] <= 1'($urandom);
         a_tid[i]   <= tid_t'($urandom);
         a_rda[i]   <= arch_reg_idx_t'($urandom);
@@ -582,9 +579,9 @@ module f3_cmt_tb;
       csr_we    <= 1'($urandom);
       csr_addr  <= 12'($urandom);
       csr_wdata <= {$urandom, $urandom};
-      dbg_tid   <= tid_t'($urandom);
-      dbg_rda   <= arch_reg_idx_t'($urandom);
-      dbg_fp    <= 1'($urandom);
+      dbg_tid <= tid_t'($urandom);
+      dbg_rda <= arch_reg_idx_t'($urandom);
+      dbg_fp  <= 1'($urandom);
     end
   end
 
