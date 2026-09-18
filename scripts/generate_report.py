@@ -82,8 +82,8 @@ def generate_html(regression_dir):
         .header {{ background: #2c3e50; color: white; padding: 20px; border-radius: 8px; }}
         .summary {{ display: flex; gap: 20px; margin: 20px 0; }}
         .card {{ background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex: 1; }}
-        .pass {{ color: #27ae60; font-weight: bold; }}
-        .fail {{ color: #e74c3c; font-weight: bold; }}
+        .pass {{ color: #27ae60; font-size: 2em; font-weight: bold; }}
+        .fail {{ color: #e74c3c; font-size: 2em; font-weight: bold; }}
         .total {{ color: #3498db; font-size: 2em; font-weight: bold; }}
         table {{ width: 100%; border-collapse: collapse; margin-top: 20px; background: white; border-radius: 8px; overflow: hidden; }}
         th {{ background: #34495e; color: white; padding: 12px; text-align: left; }}
