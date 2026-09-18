@@ -47,7 +47,6 @@ module ddr5_ctrl
       if (ref_cnt == 8'hFF)
         for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) for (int b = 0; b < 4; b++)
           bank[c][r][b] <= BANK_REFRESHING;
-    
       unique case (mst)
         M_IDLE: if (req_valid) mst <= M_ACT;
         M_ACT:  mst <= M_RW;
