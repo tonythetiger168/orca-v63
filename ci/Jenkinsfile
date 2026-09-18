@@ -1,0 +1,78 @@
+pipeline {
+    agent { label 'orca-build-farm' }
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        timeout(time: 4, unit: 'HOURS')
+        disableConcurrentBuilds()
+    }
+    environment {
+        VCS_HOME = '/tools/synopsys/vcs/U-2023.03'
+        VERDI_HOME = '/tools/synopsys/verdi/U-2023.03'
+        PATH = "${VCS_HOME}/bin:${VERDI_HOME}/bin:${env.PATH}"
+        PROJECT = 'orca_v63'
+    }
+    stages {
+        stage('Setup') {
+            steps {
+                sh 'make clean || true'
+                sh 'mkdir -p build/{vcs,lint,coverage,fpga,regression}'
+            }
+        }
+        stage('Static Analysis') {
+            parallel {
+                stage('Verilator Lint') {
+                    steps { sh 'make lint 2>&1 | tee build/lint/verilator.log' }
+                }
+                stage('Code Metrics') {
+                    steps {
+                        sh 'echo "RTL Line Count:" && find rtl -name "*.sv" | xargs wc -l | tail -1'
+                    }
+                }
+            }
+        }
+        stage('Compile') {
+            steps {
+                sh 'make filelist && ./scripts/vcs_compile.sh 2>&1 | tee build/vcs/compile.log'
+            }
+        }
+        stage('Unit Tests') {
+            parallel {
+                stage('ALU Test') {
+                    steps {
+                        sh 'cd build/vcs && ./simv +UVM_TESTNAME=orca_cpu_alu_test +ntb_random_seed=$BUILD_NUMBER -l sim_alu.log'
+                    }
+                }
+                stage('SMT Test') {
+                    steps {
+                        sh 'cd build/vcs && ./simv +UVM_TESTNAME=orca_cpu_smt_test +ntb_random_seed=$BUILD_NUMBER -l sim_smt.log'
+                    }
+                }
+                stage('Exception Test') {
+                    steps {
+                        sh 'cd build/vcs && ./simv +UVM_TESTNAME=orca_cpu_exception_test +ntb_random_seed=$BUILD_NUMBER -l sim_exc.log'
+                    }
+                }
+            }
+        }
+        stage('Regression') {
+            when { anyOf { triggeredBy 'TimerTrigger'; expression { params.FULL_REGRESSION == true } } }
+            steps { sh './scripts/run_regression.sh 2>&1 | tee build/regression/regression.log' }
+        }
+        stage('Coverage') {
+            when { anyOf { branch 'main'; branch 'develop'; expression { params.COVERAGE == true } } }
+            steps {
+                sh 'urg -dir build/vcs/simv.vdb -dbname merged.vdb'
+                sh 'urg -dir merged.vdb -format both -report build/coverage'
+            }
+        }
+        stage('FPGA Synthesis') {
+            when { anyOf { branch 'main'; expression { params.FPGA_BUILD == true } } }
+            steps { sh 'vivado -mode batch -source syn/fpga_build.tcl -log build/fpga/vivado.log' }
+        }
+    }
+    post {
+        always { cleanWs(deleteDirs: true, notFailBuild: true) }
+        success { slackSend(color: 'good', message: "ORCA Build SUCCESS: ${env.BRANCH_NAME}") }
+        failure { slackSend(color: 'danger', message: "ORCA Build FAILED: ${env.BRANCH_NAME}") }
+    }
+}
