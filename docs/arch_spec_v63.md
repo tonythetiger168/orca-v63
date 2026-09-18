@@ -1,617 +1,798 @@
 # ORCA v6.3 ZEN++ 完整架構規格書
 
-**文件版本**: v1.0
-**日期**: 2026-09-07
-**狀態**: 架構凍結（Architecture Freeze）
-**機密等級**: 商業機密 — 限內部與簽約合作夥伴
+> 版本: v1.0  
+> 日期: 2026-09-07  
+> 機密等級: 內部機密  
+> 作者: ORCA 架構團隊
+
+---
+
+## 目錄
+
+1. [執行摘要](#1-執行摘要)
+2. [RISC-V 競爭格局分析](#2-risc-v-競爭格局分析)
+3. [ZEN++ 架構目標與差異化](#3-zen-架構目標與差異化)
+4. [CPU 微架構設計](#4-cpu-微架構設計)
+5. [AI 加速器設計](#5-ai-加速器設計)
+6. [RTL 架構規格與 Stub](#6-rtl-架構規格與-stub)
+7. [開發路線圖與時程](#7-開發路線圖與時程)
+8. [附錄](#8-附錄)
 
 ---
 
 ## 1. 執行摘要
 
-ORCA v6.3 ZEN++ 是 ORCA 處理器系列的旗艦世代，採用台積電 N3E（3nm 增強版）製程與 CoWoS-L 先進封裝，首次將**高效能 64 位元 RISC-V CPU** 與 **AI 加速器**整合於同一封裝內，實現 **< 50 ns** 的 CPU-AI 協同運算延遲。
+ORCA v6.3 ZEN++ 是 ORCA 處理器家族的下一代旗艦設計，定位為全球首款 12-wide dispatch、4-way SMT 的 RISC-V 高性能核心，並首次在同封裝中整合 HBM3 AI 加速器（ORCA-NPU v3）。
 
-### 1.1 設計目標
-
-| 目標 | 規格 | 備註 |
-|------|------|------|
-| CPU 核心數 | 32（4 個 CPU Tile × 8 核心） | 每核心 4 執行緒 SMT |
-| 總執行緒數 | 128 | 每 Tile 32 執行緒 |
-| 指令發射寬度 | 12-wide dispatch | 業界最寬 RISC-V |
-| 指令退休寬度 | 16-wide retire | 配合寬發射 |
-| 目標時脈 | 3.8 GHz @ N3E | 5nm 試產為 3.2 GHz |
-| AI 算力（INT8） | 512 TOPS | 4 個 AI Tile × 128 TOPS |
-| AI 算力（BF16） | 256 TFLOPS | 同上 |
-| HBM3 容量 | 96 GB | 4 個 AI Tile × 24 GB（3 stack × 8 GB） |
-| HBM3 頻寬 | 9.8 TB/s | 819 GB/s × 12 stacks |
-| CPU-AI 延遲 | < 50 ns | 同封裝直連優勢 |
-| TDP | < 600 W | 全載功耗上限 |
-
-### 1.2 關鍵創新
-
-1. **12-wide 亂序執行管線**：目前業界最寬的 RISC-V 核心（對比 SiFive P870 為 6-wide，Ventana Veyron V2 為 8-wide）。
-2. **AIX（AI eXtension）指令集**：CPU 直接以 ISA 指令驅動 AI Tile，免除傳統驅動程式 ioctl 開銷。
-3. **同封裝 HBM3 + AI Tile**：AI 運算單元與高頻寬記憶體共置，消除 PCIe/DDR 瓶頸。
-4. **MESI-F + CHI-E 混合一致性協議**：CPU Tile 間使用精簡 MESI-F，跨封裝採用 CHI-E 子集，兼顧效能與可擴展性。
-5. **Chiplet 擴展介面（BoW）**：預留 Bunch-of-Wires 介面，支援未來多封裝擴展。
-
-### 1.3 目標市場與競爭定位
-
-| 市場 | 競爭對手 | ORCA v6.3 優勢 |
-|------|---------|---------------|
-| AI 推論伺服器 | NVIDIA H100/B200, AMD MI300X | CPU+AI 同封裝，延遲 < 50 ns |
-| 高效能運算 (HPC) | Intel Xeon, AMD EPYC | RISC-V 開放 ISA，無授權限制 |
-| 邊緣 AI 閘道器 | AWS Inferentia, Google TPU Edge | 開源生態，客製化彈性 |
-| 雲端原生運算 | AWS Graviton, Ampere Altra | 128 執行緒高密度 |
-
----
-
-## 2. 系統架構總覽
-
-### 2.1 頂層區塊圖
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     ORCA v6.3 SoC Package                       │
-│                     (CoWoS-L, ~80mm × 80mm)                     │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────┐ │
-│  │  CPU Tile 0 │  │  CPU Tile 1 │  │  CPU Tile 2 │  │CPU Tile3│ │
-│  │  8C/32T     │  │  8C/32T     │  │  8C/32T     │  │ 8C/32T  │ │
-│  │  12-wide    │  │  12-wide    │  │  12-wide    │  │ 12-wide │ │
-│  │  64MB L3    │  │  64MB L3    │  │  64MB L3    │  │ 64MB L3 │ │
-│  │  (+V-Cache) │  │  (+V-Cache) │  │  (+V-Cache) │  │(+V-Cache│ │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └────┬────┘ │
-│         │                │                │              │      │
-│  ───────┴────────────────┴────────────────┴──────────────┴────  │
-│              Coherent Mesh NoC (CHI-E subset)                   │
-│         │                │                │              │      │
-│  ┌──────┴──────┐  ┌──────┴──────┐  ┌──────┴──────┐  ┌────┴────┐ │
-│  │  AI Tile 0  │  │  AI Tile 1  │  │  AI Tile 2  │  │AI Tile 3│ │
-│  │  64×64 PE   │  │  64×64 PE   │  │  64×64 PE   │  │ 64×64 PE│ │
-│  │  128 TOPS   │  │  128 TOPS   │  │  128 TOPS   │  │128 TOPS │ │
-│  │  HBM3 ×3    │  │  HBM3 ×3    │  │  HBM3 ×3    │  │ HBM3 ×3 │ │
-│  │  (24 GB)    │  │  (24 GB)    │  │  (24 GB)    │  │ (24 GB) │ │
-│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────┘ │
-│                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │              IO Die / Uncore                             │   │
-│  │  PCIe Gen6 ×16  │  DDR5-6400 ×4ch  │  BoW Chiplet IF    │   │
-│  │  JTAG/Debug     │  Clock/PLL       │  Power Management  │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### 2.2 封裝技術
+### 1.1 核心指標
 
 | 項目 | 規格 |
 |------|------|
-| 封裝類型 | TSMC CoWoS-L（2.5D 中介層） |
-| CPU Die | 4 × N3E die（每 die 8 核心） |
-| AI Die | 4 × N5P die（每 die 128 TOPS） |
-| HBM3 | 12 stacks（每 AI die 3 stacks） |
-| IO Die | 1 × N6 die（PCIe、DDR5、BoW） |
-| V-Cache | 可選：每 CPU Tile 增加 96 MB（3D 堆疊） |
-| 中介層 | Silicon Interposer，RDL 4 層 |
-| 封裝尺寸 | ~80 × 80 mm |
+| CPU 核心 | 32 核（4 Tile × 8 核），4-way SMT = 128 執行緒 |
+| Issue Width | 12-wide dispatch / 16-wide retire |
+| 目標時脈 | 3.2 GHz (5nm) / 3.8 GHz (3nm) |
+| AI 算力 | 512 TOPS INT8 / 256 TFLOPS BF16（4 AI Tile） |
+| HBM3 容量 | 96 GB（4 Tile × 24 GB） |
+| HBM3 頻寬 | 9.8 TB/s |
+| CPU-AI 協同延遲 | < 50 ns |
+| 總功耗 | 600W（基板級） |
 
-### 2.3 時脈與功耗域
+### 1.2 差異化定位
 
-| 域 | 時脈 | 電壓 | 備註 |
-|----|------|------|------|
-| CPU Core | 3.8 GHz（目標） | 0.85–1.05 V DVFS | 每 Tile 獨立 DVFS |
-| NoC Mesh | 1.6 GHz | 0.85 V | 固定 |
-| AI Tile | 1.0 GHz | 0.80–0.95 V DVFS | 每 Tile 獨立 |
-| HBM3 PHY | 3.2 GHz DDR | 1.1 V | JEDEC 標準 |
-| IO (PCIe/DDR5) | 各協議標準 | 0.8–1.1 V | SerDes 獨立 |
+- **全球首款** 12-wide SMT-4 RISC-V 核心
+- **全球首款** RISC-V + HBM3 AI 同封裝處理器
+- **業界最低** CPU-AI 協同延遲（< 50 ns vs NVIDIA H100 ~1 µs）
+- **開放生態** 免 Arm/x86 授權費，可客製化 AIX 指令
 
 ---
 
-## 3. CPU 微架構（ZEN++）
+## 2. RISC-V 競爭格局分析
 
-### 3.1 管線總覽
+### 2.1 高性能核心排名（2026 實測）
+
+| 排名 | 核心 | 廠商 | 關鍵特性 | 實測表現 |
+|------|------|------|---------|--------|
+| 1 | C920v2 | 阿里雲 T-Head | 4-issue OoO, RVV 1.0, 64 核 | NPB 全面領先 |
+| 2 | X60 (K1/M1) | SpacemiT | 3-issue, RVV 1.0, 256-bit 向量 | 最接近 C920v2 |
+| 3 | P550 | SiFive | 3-issue OoO | 架構平衡，時脈偏低 |
+| 4 | Veyron VT1/VT2 | Ventana | 宣稱 ≈ Neoverse V1/V2 | **紙上談兵，模擬數據** |
+| 5 | U74 / C906 | SiFive / T-Head | In-order / 簡單 OoO | 數億級出貨，效能天花板低 |
+
+### 2.2 共同瓶頸
+
+- **時脈嚴重偏低**：現有 RISC-V 高性能核心最高僅 1.85 GHz，與 Arm A73 (2.0+ GHz) 差距明顯
+- **軟體優化不足**：缺乏 hand-optimized RVV assembly，編譯器 tune 模型不足
+- **軟體生態缺口**：伺服器軟體移植需 3–5 年
+
+### 2.3 對 ORCA v6.3 的啟示
+
+1. 若 v6.3 定位 12+ issue SMT 核心，市場上**無任何 RISC-V 核心達到此等級**——藍海機會
+2. 必須同步投資編譯器優化與 RVV assembly 實作
+3. 時脈突破 2.5+ GHz 是關鍵差異化
+4. 2026–2027 年是 RISC-V 高性能核心量產關鍵窗口
+
+---
+
+## 3. ZEN++ 架構目標與差異化
+
+### 3.1 設計哲學
+
+ZEN++ 借鑒 AMD Zen 5 與 Apple M 系列的設計經驗，但針對 RISC-V ISA 進行優化：
+
+- **寬發射 + 深緩衝**：12-wide dispatch 搭配 1K-entry ROB，隱藏記憶體延遲
+- **SMT-4 最大化吞吐量**：針對雲端/容器場景優化，4-way SMT 提升 60% throughput
+- **向量優先**：512-bit RVV 原生支援，2x 向量 ALU，AI 推論無需 offload
+- **CPU-AI 零複製協同**：AIX 指令集擴展，共享記憶體語意，< 50 ns 延遲
+
+### 3.2 與競品對比
+
+| 規格 | ORCA v6.3 | AMD Zen 5 | Apple M4 | Intel Granite Rapids |
+|------|-----------|-----------|----------|---------------------|
+| Dispatch Width | 12 | 8 | 12 | 8 |
+| SMT | 4-way | 2-way | 無 | 2-way |
+| ROB | 1,024 | 768 | ~650 | ~768 |
+| RVV 支援 | 512-bit | 無 | 無 | 無 |
+| AI 整合 | 同封裝 HBM3 | 無 | 同封裝 LPDDR | 無 |
+| ISA | RISC-V (開放) | x86 (封閉) | Arm (授權) | x86 (封閉) |
+
+---
+
+## 4. CPU 微架構設計
+
+### 4.1 前端管線
+
+#### 4.1.1 分支預測器：ORCA-BPU v3
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                     ZEN++ Pipeline (12-wide)                     │
-├──────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌──────┐   ┌──────┐   ┌──────┐   ┌──────┐   ┌──────┐           │
-│  │ IFU  │──→│ IDU  │──→│ RNU  │──→│ ISU  │──→│ EXU  │           │
-│  │ 12-wide│  │12-wide│  │12-wide│  │12-wide│  │16 FU │           │
-│  │ TAGE  │   │decode│   │rename│   │sched │   │exec  │           │
-│  │ 64KB  │   │RVC   │   │SMT   │   │OoO   │   │      │           │
-│  │ I$    │   │uop Q │   │409 PRF│  │512 ROB│  │      │           │
-│  └──────┘   └──────┘   └──────┘   └──────┘   └──┬───┘           │
-│                                                  │              │
-│  ┌───────────────────────────────────────────────┴───────────┐  │
-│  │                    CMT (16-wide retire)                    │  │
-│  │              ROB drain / Exception / Flush                 │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │              Memory Subsystem                            │   │
-│  │  L1I 64KB 8-way  │  L1D 48KB 12-way  │  L2 2MB 16-way   │   │
-│  │  64 MSHR         │  4 LD + 4 ST/cyc  │  512-entry DTLB  │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────────────────────┘
+ORCA-BPU v3 - 三層級混合預測架構
+
+L0: µBTB (Micro-Branch Target Buffer)
+    • 128 entries, 1-cycle latency
+    • 預測無條件跳轉與返回，零氣泡
+
+L1: TAGE-SC-L + Perceptron Hybrid
+    • TAGE: 16 tables, 16K entries each, history 4~640
+    • Statistical Corrector (SC): 64K entries
+    • Loop Predictor (LP): 256 loops, iteration count
+    • 預測精度目標: > 97% (SPECint), > 99% (loop-heavy)
+
+L2: Indirect Target Array (ITA) + Return Address Stack
+    • 4K indirect targets, 64-way RAS (per thread)
+    • 間接跳轉預測精度: > 92%
+
+特色: ML-Assisted Prefetch Hint
+    • 輕量級 LSTM 推論引擎 (on-chip, 4K 參數)
+    • 根據全域分支歷史預測「長跳躍」目標，輔助 I-Cache
+    • 降低 15% I-Cache miss penalty
 ```
 
-### 3.2 前端（IFU）
+#### 4.1.2 取指與解碼
 
 | 單元 | 規格 | 說明 |
 |------|------|------|
-| 取指寬度 | 12 指令/週期 | 64B fetch block，RVC 解壓後最多 12 條 |
-| 分支預測器 | TAGE（Tagged Geometric） | 主預測器，16 級歷史長度 |
-| BTB | 8K entry，4-way | 分支目標緩衝 |
-| RAS | 32 entry | 返回位址堆疊 |
-| 間接預測 | ITTAGE | 間接跳轉專用 |
-| I-Cache | 64 KB，8-way | 64B line，虛擬索引實體標籤 |
-| ITLB | 64 entry 全相聯 | 4KB/2MB/1GB 頁面 |
-| 取指佇列 | 128 µop | 解耦前端與後端 |
+| Fetch Bandwidth | 32 instructions / cycle | 8 個 4-instruction fetch blocks |
+| I-Cache | 64 KB, 8-way, 64B line, 4-cycle | 雙埠設計，支援 SMT 並行取指 |
+| I-TLB | 128 entries, fully associative | 每執行緒獨立，4-cycle |
+| Decode | 6-wide x86-RISC-V fused decoder | 複雜指令拆為 2–4 µops |
+| µop Cache | 3K entries, 8-way | 命中時繞過解碼，降低功耗 30% |
+| Branch Resolution | 2-cycle (taken/not-taken) | 錯誤預測懲罰: 14 cycles |
 
-**分支預測準確率目標**：> 97%（SPECint2017 平均）
+### 4.2 重命名與調度
 
-### 3.3 解碼器（IDU）
+#### 4.2.1 實體暫存器檔案（PRF）
 
-| 單元 | 規格 |
-|------|------|
-| 解碼寬度 | 12 指令/週期 |
-| RVC 支援 | 完整 RVC 解壓（16-bit → 32-bit） |
-| 指令類型 | RV64I/M/A/F/D/C/V + AIX 自定義擴展 |
-| µop 展開 | 複雜指令（如 LR/SC、AMO）展開為多 µop |
-| µop Queue | 6 佇列 × 32 entry（SMT 4 執行緒共享） |
+| PRF 類型 | 容量 | 說明 |
+|---------|------|------|
+| Integer PRF | 384 entries | 支援 4-way SMT × 32 arch × 3 深度 |
+| Vector PRF | 512 entries | 512-bit wide, RVV 1.0 |
+| FP PRF | 256 entries | 雙精度 |
+| Flag/Condition | 64 entries | |
+| 重命名頻寬 | 12 µops / cycle | |
 
-**AIX 指令解碼**：`aix.*` 指令解碼為特殊 µop，攜帶 `aix_op` 操作碼（GEMM/ATTN/SPARSE 等）、3 個 TDB 索引（`aix_tdb0/1/2`）、以及 `aix_flags`（dtype、sparse mode）。
+#### 4.2.2 調度佇列（Issue Queues）
 
-### 3.4 重命名與發射（RNU）
+| 佇列類型 | 深度 | 發射寬度 | 說明 |
+|---------|------|---------|------|
+| Integer Scheduler | 64 entries | 6-wide | 4x ALU + 2x 分支/複雜 |
+| FP/Vector Scheduler | 48 entries | 4-wide | 2x FMA + 2x vector permute |
+| Load/Store Scheduler | 32 entries | 4-wide | 2x Load + 2x Store AGU |
+| Memory Dependency | 48 entries | — | 記憶體消歧與順序維護 |
 
-| 單元 | 規格 |
-|------|------|
-| 物理暫存器 | 409 個（384 通用 + 25 保留） |
-| PRF | Integer PRF 409 × 64-bit；Vector PRF 256 × 256-bit |
-| SMT 支援 | 4 執行緒，每執行緒獨立 RAT |
-| RAT | 32 entry × 4 thread（Integer）+ 32 entry × 4 thread（Vector） |
-| Freelist | 409 entry，banked 設計 |
-| 重命名寬度 | 12 µop/週期 |
-| Checkpoint | 分支預測點自動 checkpoint（最多 64 個） |
+**總發射寬度: 16-wide (6+4+4+2 保留站發射)**
 
-### 3.5 調度器（ISU）
+### 4.3 執行引擎
 
-| 單元 | 規格 |
-|------|------|
-| 調度佇列 | Integer SQ 96 entry；FP/Vec SQ 64 entry；Memory SQ 96 entry |
-| 喚醒機制 | 2-level wakeup（predicted + actual） |
-| 年齡矩陣 | 96×96 priority matrix |
-| 發射寬度 | 12 µop/週期（6 INT + 4 MEM + 2 FP/Vec） |
-| 投機調度 | Load 可提前於未知位址 Store（memory disambiguation） |
-
-### 3.6 執行單元（EXU）
-
-| FU 類型 | 數量 | 延遲 | 支援操作 |
-|---------|------|------|---------|
-| Integer ALU | 4 | 1 cycle | ADD/SUB/Logic/Shift |
-| Branch | 2 | 1 cycle | 條件跳轉、比較 |
-| Multiply | 2 | 3 cycle | IMUL/MULH（64×64） |
-| Divide | 1 | 8–35 cycle | IDIV/IREM（可提前結束） |
-| Load AGU | 4 | 1 cycle | 位址計算 |
-| Store AGU | 4 | 1 cycle | 位址計算 + 資料寫入 |
-| FP32/64 FMA | 2 | 4 cycle | 完整 IEEE 754 |
-| FP Convert | 1 | 2–6 cycle | INT↔FP、FP↔FP |
-| Vector ALU | 2 | 1–4 cycle | RVV 1.0（VLEN=256） |
-| **AIX Dispatch** | **1** | **2 cycle** | **AIX 指令派發至 AI Tile** |
-
-### 3.7 記憶體子系統（LSU + Cache）
-
-| 層級 | 容量 | 組相聯 | 延遲 | 頻寬 |
-|------|------|--------|------|------|
-| L1 I$ | 64 KB | 8-way | 4 cycle | 64B/cycle |
-| L1 D$ | 48 KB | 12-way | 5 cycle | 4 LD + 4 ST/cycle |
-| L2 | 2 MB | 16-way | 14 cycle | 64B/cycle |
-| L3 (per tile) | 64 MB | 16-way | ~50 cycle | 128B/cycle |
-| L3 + V-Cache | 64+96 MB | — | ~55 cycle | 同上 |
-| DDR5 (4ch) | — | — | ~80 ns | 204.8 GB/s |
-| HBM3 (12 stacks) | 96 GB | — | ~120 ns | 9.8 TB/s |
-
-**MSHR**: L1D 64 entry，L2 128 entry（追蹤 outstanding miss）
-
-**預取器**：
-- Stride prefetcher（L1/L2）
-- Stream prefetcher（L2）
-- Spatial prefetcher（L2，相鄰 line）
-- AI-aware prefetcher（HBM3 → L2，學習 AI Tile 存取模式）
-
-### 3.8 退休與例外（CMT）
-
-| 單元 | 規格 |
-|------|------|
-| ROB | 512 entry（每 SMT 執行緒 128 entry 動態分割） |
-| 退休寬度 | 16 µop/週期 |
-| 例外處理 | 精確例外（precise exception），支援除錯模式 |
-| Store Buffer | 128 entry，退休後寫入記憶體 |
-| Flush 類型 | 分支 mispredict、例外、AIX trap |
-
-### 3.9 SMT-4 設計
-
-ZEN++ 支援 4 執行緒同步多執行緒（SMT-4）：
-
-| 資源 | 分割策略 |
-|------|---------|
-| 取指 | Round-robin（每週期 1 執行緒，每 4 週期循環） |
-| 解碼/重命名 | 每週期處理 1 執行緒（12-wide 完整利用） |
-| ROB | 動態分割（128 entry/thread，可傾斜） |
-| PRF | 共享（物理暫存器池） |
-| L1 Cache | 共享（VIPT，thread-agnostic） |
-| TLB | Partitioned（每 thread 專屬 ASID） |
-
-**SMT 效能目標**：4-thread 相對 1-thread 效能提升 > 2.5×（SPECrate）
-
----
-
-## 4. AI 加速器微架構（ORCA-NPU v3）
-
-### 4.1 AI Tile 總覽
+#### 4.3.1 功能單元佈局
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                    AI Tile (ORCA-NPU v3)                     │
-│                    128 TOPS INT8 @ 1 GHz                     │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────┐   ┌──────────────────────────────────────┐    │
-│  │ AIX      │   │         GSCU (Global Scheduling      │    │
-│  │ Interface│──→│         & Control Unit)              │    │
-│  │ (CPU)    │   │  指令佇列 64 entry │ TDB 16 entry    │    │
-│  └──────────┘   └──────────┬───────────────────────────┘    │
-│                            │                                │
-│           ┌────────────────┼────────────────┐               │
-│           │                │                │               │
-│     ┌─────┴─────┐   ┌─────┴─────┐   ┌─────┴─────┐          │
-│     │  Cluster 0│   │  Cluster 1│...│ Cluster 15│          │
-│     │ 4×CU      │   │ 4×CU      │   │ 4×CU      │          │
-│     │ (64×64 PE)│   │ (64×64 PE)│   │ (64×64 PE)│          │
-│     └───────────┘   └───────────┘   └───────────┘          │
-│           │                │                │               │
-│  ─────────┴────────────────┴────────────────┴─────────────  │
-│              AI L2 SRAM (32 MB, 16 banks)                    │
-│                            │                                │
-│  ┌─────────────────────────┴───────────────────────────┐    │
-│  │              HBM3 Controller ×3                      │    │
-│  │              3 stacks × 8 GB = 24 GB                 │    │
-│  │              819 GB/s × 3 = 2.46 TB/s                │    │
-│  └─────────────────────────────────────────────────────┘    │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │  Attention Engine (Transformer 硬體加速)              │   │
-│  │  Softmax / LayerNorm / Residual / GELU               │   │
-│  └──────────────────────────────────────────────────────┘   │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │  Tile NoC Interface (連接 Coherent Mesh)              │   │
-│  └──────────────────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────────────────┘
+Integer Cluster
+    ALU0  ALU1  ALU2  ALU3    (simple: add/sub/logic/shift)
+    BRU0  BRU1  MUL   DIV      (2x branch + 1x mul 3-cycle + 1x div)
+    AGU0  AGU1                 (2x load/store address generation)
+
+FP/Vec Cluster
+    FMA0  FMA1                 (fp64/fp32, 4-cycle latency)
+    VEC0  VEC1                 (512-bit RVV, 8x 64-bit lanes)
+    PERM0 PERM1                (vector permute/cross-lane)
+    CRYPTO                     (AES/SHA/SM4 專用加密加速)
+
+Memory Cluster
+    LD0   LD1   LD2   LD3      (4x Load pipelines, 2x 128-bit/cycle)
+    ST0   ST1   ST2   ST3      (4x Store pipelines, write-combining)
+    D-TLB (L0: 64 entry, 1-cyc) (per-thread independent)
 ```
 
-### 4.2 計算單元（CU）與脈動陣列
+#### 4.3.2 關鍵延遲參數
 
-| 項目 | 規格 |
-|------|------|
-| 每 Tile Cluster 數 | 16 |
-| 每 Cluster CU 數 | 4 |
-| 每 CU PE 陣列 | 64×64 脈動陣列 |
-| 總 PE 數 | 16 × 4 × 4096 = 262,144 PE |
-| 峰值 INT8 | 262,144 × 2 ops × 1 GHz / 4 tile = **128 TOPS/tile** |
-| 支援精度 | INT8 / INT4 / BF16 / FP16 / FP32 / FP8 |
-| 稀疏支援 | 2:4 結構化稀疏（2× 有效算力） |
-| 權重緩存 | 每 CU 512 KB（Weight Buffer） |
-| 啟動緩存 | 每 CU 256 KB（Activation Buffer） |
+| 操作 | 延遲 | 吞吐量 |
+|------|------|--------|
+| Integer ALU | 1 cycle | 4/cycle |
+| Integer MUL (64-bit) | 3 cycles | 1/cycle |
+| Integer DIV (64-bit) | 18–30 cycles | 1/20 cycle |
+| FP FMA (64-bit) | 4 cycles | 2/cycle |
+| FP DIV/SQRT | 10–15 cycles | 1/10 cycle |
+| Vector ADD (512-bit) | 2 cycles | 2/cycle |
+| Vector FMA (512-bit) | 4 cycles | 2/cycle |
+| Vector permute | 3 cycles | 2/cycle |
+| Load (L1 hit) | 5 cycles | 4/cycle |
+| Load (L2 hit) | 12 cycles | 2/cycle |
+| Store (L1) | 3 cycles (addr) + 退休 | 4/cycle |
 
-**資料流**：Weight-Stationary（權重駐留 PE，activation 流動）
+### 4.4 記憶體子系統
 
-### 4.3 AIX 指令集
+```
+L1 I-Cache (64 KB/core, 8-way, 4cy) ──┐
+L1 D-Cache (64 KB/core, 8-way, 5cy) ──┼──► L2 Cache (1 MB/core, 16-way, 12cy)
+                                         │    HW prefetch: L1D + L2
+                                         │    Stride + Stream + Region
+                                         │
+                                         ▼
+                              L3 Cache (64 MB/chiplet, 32-way, 35cy)
+                              3D V-Cache 可選: +64 MB
+                                         │
+                                         ▼
+                              Memory Controller
+                              DDR5-6400 / HBM3 (AI 版)
+```
 
-CPU 透過 AIX 指令直接控制 AI Tile，無需驅動程式中介。
+#### 4.4.1 載入/儲存單元特色
 
-| 指令 | 功能 | 說明 |
+- **Memory Disambiguation**：基於預測的記憶體別名分析，允許非順序載入發射，錯誤時重播
+- **Store-to-Load Forwarding**：4-entry store queue，0-cycle forwarding（地址匹配時）
+- **Data Prefetcher**：
+  - L1: Stride prefetcher（16 streams）
+  - L2: Stream + Region prefetcher（64 streams），針對 AI 工作負載優化
+- **RVV Gather/Scatter**：硬體支援向量 gather/scatter，降低不規則存取延遲
+
+### 4.5 SMT-4 實作細節
+
+| 資源 | 策略 | 每執行緒配額 |
+|------|------|-------------|
+| Fetch | 輪詢 (Round-Robin) + 優先權 | 8 inst/cycle max |
+| Decode/Rename | 動態分配 | 依 IQ 壓力調整 |
+| Issue Queues | 靜態分區 + 動態借用 | 最小 25% 保留 |
+| PRF | 完全動態 | 無硬分區，依 ROB 需求 |
+| L1 I/D | 路分區 (Way-partitioning) | CAT (Cache Allocation Tech) |
+| L2/L3 | 共享 + QoS 標記 | 避免單執行緒佔滿 |
+| ROB | 靜態分區 | 256 entries / thread (總 1K) |
+
+**SMT 效能目標**：
+- 2-way SMT: +30% throughput（典型伺服器工作負載）
+- 4-way SMT: +60% throughput（高平行雲端/容器場景）
+- 單執行緒峰值：不折損（關閉 SMT 時全資源可用）
+
+### 4.6 進階特色（ZEN++ 差異化）
+
+#### 4.6.1 AI 協同指令集擴展（ORCA-AIX）
+
+| 擴展 | 功能 | 說明 |
 |------|------|------|
-| `aix.gemm` | 矩陣乘 | A[M,K] × B[K,N] → C[M,N] |
-| `aix.attn` | Attention | Q×K^T → softmax → ×V |
-| `aix.sparse_mm` | 稀疏矩陣乘 | 2:4 structured sparse GEMM |
-| `aix.conv` | 卷積 | im2col + GEMM |
-| `aix.sync` | 同步 | 等待 AI Tile 完成（barrier） |
-| `aix.cfg` | 配置 | 設定 dtype、tile 尺寸、sparse mode |
-| `aix.dma_ld` | DMA 載入 | HBM3 → AI L2 |
-| `aix.dma_st` | DMA 儲存 | AI L2 → HBM3 |
+| `AIX.SEND` | 發送 tensor 描述子到 AI 引擎 | 零複製，透過共享記憶體語意 |
+| `AIX.SYNC` | 同步 CPU-AI 執行 | 輕量級屏障，< 50 cycles |
+| `AIX.QUERY` | 查詢 AI 引擎狀態/利用率 | 動態負載平衡 |
+| `AIX.PREF` | AI-aware 預取提示 | 根據 AI 模型圖預取權重 |
 
-**TDB（Tile Descriptor Block）**：每個 AIX 指令攜帶 3 個 TDB 索引，TDB 定義矩陣的基底位址、維度（M/N/K）、stride、dtype。CPU 在執行 AIX 指令前，以 `aix.cfg` 預先填充 TDB。
+#### 4.6.2 安全與可靠性
 
-### 4.4 全域調度與控制單元（GSCU）
+| 功能 | 實作 | 說明 |
+|------|------|------|
+| MTE (Memory Tagging) | 4-bit tags, 硬體檢查 | 防 use-after-free / buffer overflow |
+| PAC (Pointer Auth) | QARMA5 演算法 | 防 ROP/JOP 攻擊 |
+| TEE (Trusted Execution) | 雙世界 (Secure/Normal) | 基於 RISC-V PMP/Smepmp + 擴展 |
+| RAS (Reliability) | ECC 全覆蓋 (L1/L2/L3/PRF) | SECDED / Chipkill (L3) |
+| DVFS | 核心級獨立調頻 | 10ms 反應時間，提升 15% perf/W |
 
-| 功能 | 說明 |
-|------|------|
-| 指令佇列 | 64 entry，FIFO |
-| TDB 檔案 | 16 entry，硬體管理 |
-| 相依性追蹤 | TDB busy bit，自動 stall |
-| Cluster 分派 | Round-robin 至空閒 Cluster |
-| 完成中斷 | 聚合至 CPU（MSI-X 或 AIX sync） |
-| QoS | 4 級優先權， starvation 防止 |
+### 4.7 微架構參數總表
 
-### 4.5 Attention 硬體加速引擎
+| 參數 | v6.3 ZEN++ | AMD Zen 5 | Apple M4 |
+|------|-----------|-----------|----------|
+| Dispatch Width | 12 | 8 | 12 |
+| Retire Width | 16 | 8 | 12 |
+| SMT | 4-way | 2-way | 無 |
+| ROB | 1,024 | 768 | ~650 |
+| INT Scheduler | 64 entries | 48 | ~60 |
+| FP Scheduler | 48 entries | 36 | ~40 |
+| LS Scheduler | 32 entries | 24 | ~28 |
+| INT ALU | 6 | 6 | 6 |
+| FP/Vec FMA | 4 (含 2x RVV) | 4 | 4 |
+| Load Ports | 4 | 3 | 3 |
+| Store Ports | 4 | 2 | 2 |
+| L2 / core | 1 MB | 1 MB | 0.75 MB |
+| L3 (shared) | 64 MB + 3D V-Cache | 32–64 MB | 0 (SoC 架構) |
+| Target Clock | 3.2–3.8 GHz | 4.0–5.5 GHz | 3.5–4.5 GHz |
+| Peak INT IPC | ~6.0 | ~5.5 | ~6.5 |
+| Peak FP IPC | ~8.0 (w/ RVV) | ~6.0 | ~8.0 |
 
-專為 Transformer 推論優化的專用管線：
+---
 
-| 階段 | 硬體支援 |
+## 5. AI 加速器設計
+
+### 5.1 設計目標
+
+| 項目 | 目標規格 |
 |------|---------|
-| Q×K^T | 脈動陣列 GEMM |
-| Softmax | 線性近似 LUT + Newton-Raphson 迭代 |
-| ×V | 脈動陣列 GEMM |
-| LayerNorm | 均值/方差計算單元 |
-| Residual Add | 向量加法器 |
-| GELU | 分段線性 LUT |
-| KV-Cache 管理 | HBM3 指標追蹤，自動 append |
+| 峰值算力 (INT8) | 128 TOPS / Tile |
+| 峰值算力 (BF16/FP16) | 64 TFLOPS / Tile |
+| 峰值算力 (FP32) | 32 TFLOPS / Tile |
+| HBM3 容量 | 24 GB / Tile (3 stacks) |
+| HBM3 頻寬 | 819 GB/s / Stack |
+| 片上 SRAM | 64 MB / Tile |
+| 多 Tile 擴展 | 最多 8 Tiles (chiplet) |
+| CPU-AI 延遲 | < 50 ns (AIX.SYNC) |
+| 功耗 | 150W / Tile (含 HBM3) |
 
-**效能目標**：BERT-Large single layer < 5 µs（batch=1, seq=512）
+### 5.2 整體架構
 
-### 4.6 HBM3 子系統
+```
+ORCA v6.3 SoC 頂層架構
 
-| 項目 | 規格 |
+CPU Tile 0 (8C SMT-4) ◄──► CPU Tile 1 (8C) ◄──► CPU Tile 2 (8C) ◄──► CPU Tile 3 (8C)
+       │                      │                      │                      │
+       └──────────────────────┴──────────────────────┴──────────────────────┘
+                              │
+                    Coherent Mesh (AMBA CHI-E, 2 TB/s bisection)
+                    (NoC, 4×4 mesh)
+                              │
+AI Tile 0 (128 TOPS) ◄──► AI Tile 1 (128 TOPS) ◄──► AI Tile 2 (128 TOPS) ◄──► AI Tile 3 (128 TOPS)
++ HBM3×3                + HBM3×3                + HBM3×3                + HBM3×3
+
+[可選擴展] AI Tile 4–7 (第二個 chiplet 基板，透過 BoW 互連)
+```
+
+### 5.3 AI Tile 微架構
+
+```
+AI Tile 內部架構 (ORCA-NPU v3)
+
+全域控制與調度單元 (GSCU)
+    • 指令解碼與發射 (ORCA-NPU ISA)
+    • 任務分派至 16 個計算叢集 (Cluster)
+    • 與 CPU 的 AIX 介面處理 (AIX.SEND/SYNC/QUERY/PREF)
+    • DMA 引擎：16 通道，支援壓縮/解壓縮 (4:1 稀疏/量化)
+                │
+    Cluster 0   Cluster 1   Cluster 2  ...   Cluster 15
+    (8 TOPS)    (8 TOPS)    (8 TOPS)         (8 TOPS)
+        │           │           │                  │
+        └───────────┴───────────┴──────────────────┘
+                          │
+              共享 L2 SRAM (64 MB, 8-bank)
+                  權重快取 (Weight Cache): 48 MB
+                  Activation 暫存: 16 MB
+                  頻寬: 8 TB/s (on-die, 2nm 製程)
+                  ECC: SECDED
+                          │
+              HBM3 記憶體控制器 (3 stacks)
+                  每 Stack: 8-Hi, 8 GB, 819 GB/s
+                  總容量: 24 GB, 總頻寬: 2.46 TB/s
+```
+
+### 5.4 計算叢集（Cluster）微架構
+
+每個 Cluster 包含 4 個計算單元（CU），每個 CU 是一個 2D 脈動陣列（Systolic Array）：
+
+```
+Compute Unit (CU) 架構
+
+Input Buffer (64 KB) ◄────► Weight Buffer (256 KB)
+    (activations)              (weights)
+         │                          │
+         ▼                          ▼
+    ┌─────────────────────────────────────┐
+    │      2D Systolic Array (64×64 PEs) │
+    │                                     │
+    │    PE  PE  PE  ...   64 rows       │
+    │    PE  PE  PE  ...   每 PE: 1x INT8 MAC / cycle
+    │    ... ... ... ...   或 1x BF16 FMA / 2 cycles
+    │                      或 1x FP32 FMA / 4 cycles
+    │                                     │
+    │  每 CU 峰值: 4,096 MACs/cycle @ 1 GHz = 8.19 TOPS (INT8)
+    │  每 Cluster (4 CU): 32.77 TOPS
+    │  每 Tile (16 Cluster): 524 TOPS (理論) → 實際 128 TOPS (利用率 24%)
+    └─────────────────────────────────────┘
+         │
+         ▼
+    累加器 / 輸出緩衝區 (Accumulator, 128 KB)
+        • 支援 32-bit 累加 (INT32 / FP32)
+        • 內建 ReLU/SiLU/GELU/Sigmoid 啟動函數硬體單元
+        • 內建 LayerNorm / BatchNorm / RMSNorm 硬體加速
+        • 內建 Softmax / Top-K 硬體單元 (用於 Attention)
+```
+
+### 5.5 精度支援與吞吐量
+
+| 精度 | 每 PE 吞吐量 | 每 CU (64×64) | 每 Tile (16 Clusters) | 利用率目標 |
+|------|-------------|--------------|----------------------|-----------|
+| INT8 | 1 MAC/cycle | 8.19 TOPS | 524 TOPS | 24% → 128 TOPS |
+| INT4 | 2 MACs/cycle | 16.38 TOPS | 1,048 TOPS | 20% → 210 TOPS |
+| BF16 | 0.5 FMA/cycle | 4.10 TFLOPS | 262 TFLOPS | 24% → 64 TFLOPS |
+| FP16 | 0.5 FMA/cycle | 4.10 TFLOPS | 262 TFLOPS | 24% → 64 TFLOPS |
+| FP32 | 0.25 FMA/cycle | 2.05 TFLOPS | 131 TFLOPS | 24% → 32 TFLOPS |
+| FP8 (E4M3/E5M2) | 2 MACs/cycle | 16.38 TOPS | 1,048 TOPS | 20% → 210 TOPS |
+
+### 5.6 資料流架構（三層優化）
+
+1. **Weight-Stationary（WS）在 CU 內**：權重載入後靜態駐留，多個 activation 向量流過
+2. **Row-Stationary（RS）在 Cluster 內**：4 個 CU 共享 output tile 不同行，橫向資料廣播
+3. **Tile-Stationary（TS）在全 Tile**：16 個 Cluster 分別處理不同 output channel 或 batch
+
+### 5.7 稀疏性與壓縮加速
+
+| 功能 | 實作 | 效能增益 |
+|------|------|--------|
+| 結構化稀疏 (2:4) | 硬體跳過零權重 PE | 2x 有效吞吐量 |
+| 非結構化稀疏 | 壓縮編碼 + 索引解碼 | 1.5–1.8x（依稀疏度） |
+| 動態稀疏（Activation） | 零值跳過邏輯 | 1.2–1.5x |
+| 量化壓縮 | INT4/FP8 原生支援 | 2x 記憶體頻寬效率 |
+| 權重壓縮格式 | 區塊浮點 (Block FP, 8×8 sharing exponent) | 2x 儲存密度，< 1% 精度損失 |
+
+### 5.8 Transformer / LLM 專用硬體
+
+#### 5.8.1 注意力引擎（Attention Engine）
+
+```
+專用 Attention 加速單元 (每 Tile 4 個)
+
+Q/K/V Projection (GEMM) ──► Q×K^T (Score) (GEMM) ──► Softmax + Mask (HW unit) ──► ×V (Output) (GEMM)
+
+特色:
+• FlashAttention-3 風格分塊計算，減少 HBM 存取
+• 支援 GQA (Grouped Query Attention) 與 MQA (Multi-Query)
+• 支援 ALiBi / RoPE / Yarn 位置編碼硬體注入
+• 支援 KV-Cache 壓縮 (4-bit / 8-bit 量化)
+• 序列長度: 最多 128K
+
+效能: 每單元 2 TFLOPS (BF16) → 每 Tile 8 TFLOPS Attention 專用吞吐
+```
+
+#### 5.8.2 MoE 路由加速
+
+| 功能 | 實作 | 說明 |
+|------|------|------|
+| Top-K 路由 | 硬體 Top-K (K=2~8) | 每 cycle 完成 16K expert 分數排序 |
+| Conditional Routing | 稀疏啟動標記 | 僅載入被選中的 expert 權重，節省 80% HBM 頻寬 |
+| Expert Parallelism | 跨 Tile 分片 | 每個 expert 可映射到不同 Tile，All-to-All 透過 NoC |
+
+### 5.9 記憶體子系統詳細設計
+
+#### 5.9.1 HBM3 配置
+
+| 參數 | 規格 |
 |------|------|
-| 標準 | JEDEC HBM3 |
-| Stack 數 | 3 per AI Tile（12 total） |
-| 容量 | 8 GB/stack（24 GB/tile，96 GB total） |
-| 頻寬 | 819 GB/s/stack（2.46 TB/s/tile） |
-| Pseudo-channel | 2 per stack |
-| Bank 數 | 32 per pseudo-channel |
-| 刷新 | 自動 + 溫度感知 |
-| ECC | On-die ECC + link ECC |
-| 省電 | Self-refresh、power-down、溫度降頻 |
+| Stack 數量 | 3 stacks / Tile |
+| 每 Stack 容量 | 8 GB (8-Hi) |
+| 每 Stack 頻寬 | 819 GB/s |
+| 總容量 | 24 GB / Tile |
+| 總頻寬 | 2.46 TB/s / Tile |
+| 介面 | 每 Stack 1024-bit data bus |
+| PHY | 3nm 製程，每 pin 6.4 Gbps |
+| 功耗 | ~12W / Stack (含 PHY) |
 
-### 4.7 AI L2 SRAM
+#### 5.9.2 片上 SRAM 階層
 
-| 項目 | 規格 |
-|------|------|
-| 容量 | 32 MB |
-| Bank 數 | 16（獨立存取） |
-| 頻寬 | 128 B/cycle/bank |
-| ECC | SECDED |
-| Scrubbing | 背景 scrub（可配置速率） |
-| 分割 | 可配置為 unified 或 per-cluster |
+| 層級 | 容量 | 頻寬 | 延遲 | 用途 |
+|------|------|------|------|------|
+| PE 暫存器 | 1 KB / PE | 16 TB/s (陣列內) | 1 cycle | 部分和累加 |
+| CU Input Buffer | 64 KB / CU | 512 GB/s | 2 cycles | Activation 暫存 |
+| CU Weight Buffer | 256 KB / CU | 512 GB/s | 2 cycles | 權重快取 |
+| Cluster L2 | 4 MB / Cluster | 128 GB/s | 5 cycles | 跨 CU 共享 |
+| Tile L2 | 64 MB / Tile | 8 TB/s | 10 cycles | 全域權重/activation |
+
+#### 5.9.3 記憶體一致性（與 CPU 協同）
+
+```
+CPU L3 Cache ◄──► Coherent Mesh (CHI-E) ◄──► AI Tile L2 SRAM
+                      │
+                      ├── 一致性協議: MESI-F (Modified/Exclusive/Shared/Invalid/Forward)
+                      ├── 快取行大小: 128 byte (對齊 HBM3 burst)
+                      ├── 直連存取: CPU 可透過 AIX 指令直接讀寫 AI L2
+                      └── 同步機制: AIX.SYNC 觸發全域快取 flush + 屏障
+```
+
+### 5.10 AIX 指令集擴展詳細規格
+
+#### 5.10.1 AIX.SEND — 發送 Tensor 描述子
+
+```
+編碼: AIX.SEND rd, rs1, rs2
+  • rs1: 記憶體位址 (Tensor Descriptor Block, 64 byte)
+  • rs2: 目標 AI Tile ID (0–7) + 優先權 (3 bit)
+  • rd:  回傳 handle (用於後續 SYNC/QUERY)
+
+Tensor Descriptor Block (64 byte):
+  Offset 0–7:   Tensor Base Address (CPU 虛擬位址)
+  Offset 8–15:  Tensor Dimensions (4× 32-bit: N,C,H,W)
+  Offset 16:    Data Type (INT8/BF16/FP32/etc.)
+  Offset 17:    Layout (NCHW/NHWC/Blocked)
+  Offset 18:    Sparsity Mask Address (可選)
+  Offset 19:    Compression Format (None/2:4/BlockFP)
+  Offset 20–23: Destination in AI L2 SRAM (tile offset)
+  Offset 24–31: Reserved
+  Offset 32–63: User-defined Metadata (模型層 ID 等)
+
+延遲: 10–20 cycles (解析描述子 + 啟動 DMA)
+副作用: 非同步，不阻塞 CPU
+```
+
+#### 5.10.2 AIX.SYNC — 同步屏障
+
+```
+編碼: AIX.SYNC rd, rs1
+  • rs1: handle (來自 AIX.SEND)
+  • rd:  狀態碼 (0=完成, 1=逾時, 2=錯誤)
+
+行為:
+  1. CPU 發出 SYNC 後，可選擇:
+     a. 阻塞等待 (rd 輪詢直到完成)
+     b. 非阻塞 (rd 立即回傳，透過中斷通知)
+  2. AI Tile 完成計算後:
+     a. 將結果寫回指定記憶體位址
+     b. 發送完成中斷至 CPU (每 Tile 獨立 IRQ)
+  3. 隱含快取同步: AI Tile 的 L2 write-back 至 CPU L3
+
+延遲: < 50 ns (最佳情況，無資料搬移)
+      < 200 ns (含 L2 flush 至 HBM3)
+```
+
+#### 5.10.3 AIX.QUERY — 狀態查詢
+
+```
+編碼: AIX.QUERY rd, rs1
+  • rs1: handle 或 Tile ID
+  • rd:  64-bit 狀態向量
+
+rd 回傳格式:
+  Bit 0–15:   完成進度 % (0–10000, 固定點)
+  Bit 16–23:  Tile 溫度 (°C)
+  Bit 24–31:  Tile 功耗 (W, 固定點)
+  Bit 32–39:  HBM3 頻寬利用率 %
+  Bit 40–47:  CU 利用率 % (平均)
+  Bit 48–55:  佇列深度 (待處理任務數)
+  Bit 56:     錯誤標記 (ECC/溫度/逾時)
+  Bit 57–63:  保留
+
+用途: 動態負載平衡、熱管理、效能分析 (perf)
+```
+
+#### 5.10.4 AIX.PREF — AI-aware 預取
+
+```
+編碼: AIX.PREF rs1, rs2
+  • rs1: 預取位址 (權重或 activation)
+  • rs2: 預取類型 (0=權重, 1=activation, 2=KV-cache)
+
+行為:
+  • 提示 AI Tile 的 DMA 引擎提前將資料從 HBM3 搬至 L2 SRAM
+  • 不阻塞 CPU，純提示性 (hint)
+  • AI 硬體根據內部排程決定是否執行
+
+用途: 在 CPU 準備下一層 tensor 描述子時，重疊資料搬移
+```
+
+### 5.11 多 Tile 擴展與 Chiplet 互連
+
+#### 5.11.1 單基板（4 Tile）配置
+
+```
+ORCA v6.3 基板（Organic Substrate）
+
+AI Tile 0 (+ HBM3×3) ◄──► AI Tile 1 (+ HBM3×3) ◄──► AI Tile 2 (+ HBM3×3) ◄──► AI Tile 3 (+ HBM3×3)
+       │                       │                       │                       │
+       └───────────────────────┴───────────────────────┴───────────────────────┘
+                              │
+                        基板 NoC (2 TB/s, 延遲 < 5 ns)
+                        (AMBA CHI)
+                              │
+CPU Tile 0 (8C) ◄──► CPU Tile 1 (8C) ◄──► CPU Tile 2 (8C) ◄──► CPU Tile 3 (8C)
+
+總算力: 512 TOPS INT8 (4 AI Tiles)
+總容量: 96 GB HBM3
+總功耗: ~600W (CPU 200W + AI 400W)
+```
+
+#### 5.11.2 多基板擴展（BoW 互連）
+
+```
+基板 0 (主) ◄────BoW Link────► 基板 1 (擴展)
+   │                              │
+   ├── 4× AI Tile                 ├── 4× AI Tile
+   ├── 4× CPU Tile                ├── 4× CPU Tile (或純 AI)
+   └── 基板 NoC                  └── 基板 NoC
+          │                            │
+          └──────┬─────────────────────┘
+                 │
+           BoW Router (8 條 link, 每條 128 GB/s)
+           (封包交換)
+
+BoW 規格:
+  • 頻寬: 128 GB/s / link (單向), 總 1 TB/s (8 link)
+  • 延遲: < 2 ns (PHY) + < 3 ns (router) = < 5 ns
+  • 功耗: < 0.5 pJ/bit
+  • 距離: 最多 2 mm (基板對基板)
+  • 拓撲: 2D Torus 或 Fat Tree
+```
+
+### 5.12 軟體棧介面
+
+| 層級 | 介面 | 說明 |
+|------|------|------|
+| Framework | PyTorch 2.x / JAX / TensorFlow | 原生支援，透過 torch.compile() |
+| Graph Compiler | ORCA-MLIR | 基於 MLIR，自動圖優化、量化、分片 |
+| Runtime | ORCA-RT | 任務排程、記憶體管理、多 Tile 負載平衡 |
+| Kernel Lib | ORCA-BLAS / ORCA-Transformer | 手寫優化 kernel，覆蓋 90% 模型運算 |
+| Driver | Linux Kernel Module | AIX 指令封裝、中斷處理、熱插拔 |
+| Firmware | ORCA-FW | Tile 初始化、ECC 校正、溫度/功耗監控 |
+
+### 5.13 功耗與面積估算（3nm 製程）
+
+| 項目 | 面積 (mm²) | 功耗 (W) | 說明 |
+|------|-----------|---------|------|
+| 16 Clusters (含 CU) | 180 | 95 | 主要計算面積 |
+| Attention Engine ×4 | 24 | 18 | 專用硬體 |
+| L2 SRAM (64 MB) | 45 | 12 | SRAM 面積主導 |
+| HBM3 PHY ×3 | 18 | 15 | PHY + 控制器 |
+| NoC / GSCU / DMA | 15 | 8 | 互連與控制 |
+| 其他 (ECC, 測試) | 8 | 2 | |
+| **總計 (AI Tile)** | **~290 mm²** | **150W** | |
+| **CPU Tile (8C)** | ~120 mm² | 50W | |
+| **基板 (4+4 Tile)** | ~1,640 mm² | 600W | 含互連與 I/O |
+
+### 5.14 與競品對比
+
+| 規格 | ORCA v6.3 (4 Tile) | NVIDIA H100 SXM | Google TPU v5e | AMD MI300X |
+|------|-------------------|-----------------|----------------|------------|
+| INT8 TOPS | 512 | 3,958 | 197 | 1,300 |
+| BF16 TFLOPS | 256 | 1,979 | 98 | 1,300 |
+| HBM 容量 | 96 GB | 80 GB | 16 GB | 192 GB |
+| HBM 頻寬 | 9.8 TB/s | 3.35 TB/s | 819 GB/s | 5.3 TB/s |
+| 功耗 | 600W | 700W | 200W | 750W |
+| CPU 整合 | ✅ 同封裝 | ❌ 外接 | ❌ 外接 | ❌ 外接 |
+| 延遲 (CPU→AI) | < 50 ns | ~1 µs (PCIe) | ~5 µs (網路) | ~1 µs |
+| 製程 | 3nm | 4nm | 5nm | 5nm |
+| 價格定位 | 中端 AI 伺服器 | 高端 $30K+ | 雲端租賃 | 高端 $20K+ |
+
+**ORCA v6.3 差異化優勢**：
+1. 超低延遲 CPU-AI 協同（< 50 ns）
+2. 高頻寬記憶體（9.8 TB/s，超越 H100 3 倍）
+3. 同封裝整合（CPU + AI 共享記憶體語意，無需資料複製）
+4. RISC-V 開放生態（無授權費，可客製化 AIX 指令）
 
 ---
 
-## 5. 互連架構
+## 6. RTL 架構規格與 Stub
 
-### 5.1 Coherent Mesh NoC
-
-| 項目 | 規格 |
-|------|------|
-| 拓撲 | 2D Mesh（4×2 節點：4 CPU Tile + 4 AI Tile） |
-| 協議 | AMBA CHI-E 子集（CPU 間） + 自定義（CPU↔AI） |
-| Flit 寬度 | 512-bit data + 32-bit header |
-| 虛擬通道 | 4 VC（REQ/RSP/SNP/DATA） |
-| 時脈 | 1.6 GHz（獨立時脈域） |
-| 路由 | X-Y dimension order |
-| 流量控制 | Credit-based |
-
-### 5.2 一致性協議
-
-**CPU Tile 間**：MESI-F（Modified/Exclusive/Shared/Invalid/Forward）
-- Forward 狀態減少目錄查詢延遲
-- Snoop filter：每 Tile 8K entry，覆蓋 L1+L2
-
-**CPU ↔ AI Tile**：自定義輕量協議
-- AI L2 不參與 CPU 一致性域（scratchpad 語義）
-- CPU 透過 AIX 指令顯式管理 AI 資料生命週期
-- HBM3 由 AI Tile 獨佔（CPU 可經 NoC 存取，但不快取）
-
-### 5.3 BoW Chiplet 擴展介面
-
-| 項目 | 規格 |
-|------|------|
-| 標準 | Bunch of Wires（BoW）|
-| 通道數 | 8 TX + 8 RX |
-| 資料率 | 16 GT/s per wire |
-| 頻寬 | 32 GB/s per direction |
-| 用途 | 未來多封裝擴展（2P/4P 伺服器） |
-
----
-
-## 6. RTL 實作規格
-
-### 6.1 模組層次與檔案清單
+### 6.1 專案檔案結構
 
 ```
 orca_v63/
 ├── rtl/
-│   ├── common/
-│   │   └── orca_pkg.sv                # 全域套件（參數、型別、指令定義）
+│   ├── common/                    # 共享基礎模組
+│   │   ├── orca_pkg.sv          # 全域參數與型別定義
+│   │   ├── orca_axi_pkg.sv      # AMBA AXI/CHI 介面型別
+│   │   ├── orca_aix_pkg.sv      # AIX 指令擴展介面型別
+│   │   └── primitives/          # 標準單元 wrapper
+│   │       ├── sram_1r1w.sv
+│   │       ├── sram_2r1w.sv
+│   │       ├── flop_array.sv
+│   │       └── clock_gate.sv
 │   │
-│   ├── soc/
-│   │   └── orca_v63_soc.sv            # SoC 頂層
+│   ├── soc/                       # 頂層 SoC
+│   │   └── orca_v63_soc.sv
 │   │
-│   ├── cpu/
-│   │   ├── orca_v63_cpu_tile.sv       # CPU Tile 頂層
-│   │   ├── orca_v63_cpu_core.sv       # CPU Core 頂層
+│   ├── cpu/                       # CPU Tile (ZEN++)
+│   │   ├── orca_v63_cpu_tile.sv
 │   │   ├── frontend/
-│   │   │   ├── ifu_bpu.sv             # 分支預測器（TAGE）
-│   │   │   ├── ifu_fetch.sv           # 取指單元
-│   │   │   ├── ifu_btb.sv             # BTB
-│   │   │   └── ifu_tlb.sv             # ITLB
+│   │   │   ├── ifu_bpu.sv
+│   │   │   ├── ifu_fetch.sv
+│   │   │   ├── ifu_btb.sv
+│   │   │   └── ifu_tlb.sv
 │   │   ├── decode/
-│   │   │   ├── idu_decoder.sv         # 解碼器
-│   │   │   ├── idu_uop_queue.sv       # µop 佇列
-│   │   │   └── idu_rvc_expand.sv      # RVC 解壓
+│   │   │   ├── idu_decoder.sv
+│   │   │   ├── idu_uop_queue.sv
+│   │   │   └── idu_rvc_expand.sv
 │   │   ├── rename/
-│   │   │   ├── rnu_rat.sv             # 暫存器別名表
-│   │   │   ├── rnu_freelist.sv        # 自由暫存器池
-│   │   │   └── rnu_remap.sv           # 重命名控制
+│   │   │   ├── rnu_rat.sv
+│   │   │   ├── rnu_freelist.sv
+│   │   │   └── rnu_remap.sv
 │   │   ├── scheduler/
-│   │   │   ├── isu_int.sv             # Integer 調度器
-│   │   │   ├── isu_fp.sv              # FP/Vec 調度器
-│   │   │   ├── isu_mem.sv             # Memory 調度器
-│   │   │   └── isu_wake.sv            # 喚醒邏輯
+│   │   │   ├── isu_int.sv
+│   │   │   ├── isu_fp.sv
+│   │   │   ├── isu_mem.sv
+│   │   │   └── isu_wake.sv
 │   │   ├── execution/
-│   │   │   ├── exu_alu.sv             # Integer ALU
-│   │   │   ├── exu_mul.sv             # 乘法器
-│   │   │   ├── exu_fpu.sv             # 浮點單元
-│   │   │   ├── exu_vec.sv             # 向量單元（RVV）
-│   │   │   ├── exu_bru.sv             # 分支單元
-│   │   │   └── exu_crypto.sv          # 加密加速
+│   │   │   ├── exu_alu.sv
+│   │   │   ├── exu_mul.sv
+│   │   │   ├── exu_fpu.sv
+│   │   │   ├── exu_vec.sv
+│   │   │   ├── exu_bru.sv
+│   │   │   └── exu_crypto.sv
 │   │   ├── memory/
-│   │   │   ├── lsu_ld.sv              # Load 單元
-│   │   │   ├── lsu_st.sv              # Store 單元
-│   │   │   ├── lsu_dtlb.sv            # DTLB
-│   │   │   ├── lsu_mshr.sv            # MSHR
-│   │   │   └── lsu_dcache.sv          # L1 D-Cache
+│   │   │   ├── lsu_ld.sv
+│   │   │   ├── lsu_st.sv
+│   │   │   ├── lsu_dtlb.sv
+│   │   │   ├── lsu_mshr.sv
+│   │   │   └── lsu_dcache.sv
 │   │   ├── cache/
-│   │   │   ├── icache.sv              # L1 I-Cache
-│   │   │   ├── icache_tag.sv          # I$ Tag
-│   │   │   ├── dcache.sv              # L1 D-Cache (wrapper)
-│   │   │   ├── dcache_tag.sv          # D$ Tag
-│   │   │   ├── l2cache.sv             # L2 Cache
-│   │   │   └── l3cache.sv             # L3 Cache
+│   │   │   ├── icache.sv
+│   │   │   ├── icache_tag.sv
+│   │   │   ├── dcache.sv
+│   │   │   ├── dcache_tag.sv
+│   │   │   ├── l2cache.sv
+│   │   │   └── l3cache.sv
 │   │   └── commit/
-│   │       ├── cmt_rob.sv             # ROB
-│   │       ├── cmt_archreg.sv         # 架構暫存器
-│   │       └── cmt_trap.sv            # 例外/中斷
+│   │       ├── cmt_rob.sv
+│   │       ├── cmt_archreg.sv
+│   │       └── cmt_trap.sv
 │   │
-│   ├── ai/
-│   │   ├── orca_v63_ai_tile.sv        # AI Tile 頂層
+│   ├── ai/                        # AI Tile (ORCA-NPU v3)
+│   │   ├── orca_v63_ai_tile.sv
 │   │   ├── ctrl/
-│   │   │   ├── npu_gscu.sv            # GSCU
-│   │   │   ├── npu_dma.sv             # AI DMA
-│   │   │   └── npu_aix_intf.sv        # AIX 介面
+│   │   │   ├── npu_gscu.sv
+│   │   │   ├── npu_dma.sv
+│   │   │   └── npu_aix_intf.sv
 │   │   ├── cluster/
-│   │   │   ├── npu_cluster.sv         # Cluster（4×CU）
-│   │   │   └── npu_cu.sv              # 計算單元
+│   │   │   ├── npu_cluster.sv
+│   │   │   └── npu_cu.sv
 │   │   ├── pe/
-│   │   │   ├── npu_systolic.sv        # 64×64 脈動陣列
-│   │   │   ├── npu_pe.sv              # 單一 PE
-│   │   │   └── npu_acc.sv             # 累加器
+│   │   │   ├── npu_systolic.sv
+│   │   │   ├── npu_pe.sv
+│   │   │   └── npu_acc.sv
 │   │   ├── attention/
-│   │   │   └── npu_attn_engine.sv     # Attention 引擎
+│   │   │   └── npu_attn_engine.sv
 │   │   ├── memory/
-│   │   │   ├── npu_l2_sram.sv         # AI L2 SRAM
-│   │   │   ├── npu_hbm3_ctrl.sv       # HBM3 控制器
-│   │   │   └── npu_hbm3_phy.sv        # HBM3 PHY
+│   │   │   ├── npu_l2_sram.sv
+│   │   │   ├── npu_hbm3_ctrl.sv
+│   │   │   └── npu_hbm3_phy.sv
 │   │   └── noc/
-│   │       └── npu_tile_noc.sv        # AI Tile NoC 介面
+│   │       └── npu_tile_noc.sv
 │   │
-│   ├── noc/
-│   │   ├── orca_noc_router.sv         # Mesh 路由器
-│   │   ├── orca_noc_link.sv           # 鏈路（含 flow control）
-│   │   ├── orca_chi_coh.sv            # CHI 一致性控制器
-│   │   └── orca_bow_link.sv           # BoW chiplet 介面
+│   ├── noc/                       # 片間/基板互連
+│   │   ├── orca_noc_router.sv
+│   │   ├── orca_noc_link.sv
+│   │   ├── orca_chi_coh.sv
+│   │   └── orca_bow_link.sv
 │   │
-│   └── pad/
-│       ├── ddr5_ctrl.sv               # DDR5 控制器
-│       ├── pcie_gen6.sv               # PCIe Gen6 控制器
-│       ├── gpio_pad.sv                # GPIO
-│       └── clock_gate.sv              # Clock gating
+│   └── pad/                       # IO / PHY
+│       ├── ddr5_ctrl.sv
+│       ├── pcie_gen6.sv
+│       └── gpio_pad.sv
 │
-├── tb/
-│   ├── cpu_tile_tb/                   # CPU UVM 測試平台
-│   │   ├── orca_cpu_agent.sv
-│   │   ├── orca_cpu_sequence.sv
-│   │   ├── orca_cpu_env.sv
-│   │   ├── orca_cpu_test.sv
-│   │   └── tb_top.sv
-│   ├── ai_tile_tb/                    # AI C++ DPI 參考模型
-│   │   ├── ai_tile_ref_model.cpp
-│   │   └── ai_tile_ref_model.h
-│   ├── sva/                           # SystemVerilog Assertions
-│   │   ├── orca_sva_rob.sv
-│   │   ├── orca_sva_cache.sv
-│   │   └── orca_sva_noc.sv
-│   └── dpi/                           # DPI-C 介面
-│       └── cpu_ref_model.cpp
+├── tb/                            # Testbench
+│   ├── orca_v63_soc_tb.sv
+│   ├── cpu_tile_tb/
+│   └── ai_tile_tb/
 │
-├── syn/
-│   ├── cpu_tile.tcl                   # DC synthesis script
-│   ├── ai_tile.tcl
-│   └── fpga_build.tcl                 # Vivado FPGA build
-│
-├── scripts/
-│   ├── vcs_compile.sh                 # VCS 編譯
-│   ├── run_regression.sh              # 回歸測試
-│   └── gen_filelist.sh                # File list 生成
-│
-├── ci/
-│   ├── github_actions.yml             # GitHub Actions CI
-│   └── jenkins/                       # Jenkins pipeline
+├── syn/                           # 綜合約束
+│   ├── orca_v63_soc.sdc
+│   ├── cpu_tile.tcl
+│   └── ai_tile.tcl
 │
 └── docs/
-    └── arch_spec_v63.md               # 本文件
+    └── arch_spec_v63.md
 ```
 
-### 6.2 關鍵模組介面定義
+### 6.2 關鍵參數定義（orca_pkg.sv 摘要）
 
-#### `orca_pkg.sv` 核心型別
+| 參數類別 | 參數名 | 值 | 說明 |
+|---------|--------|-----|------|
+| SoC | NUM_CPU_TILES | 4 | 4 CPU tiles |
+| SoC | NUM_AI_TILES | 4 | 4 AI tiles |
+| SoC | CORES_PER_CPU_TILE | 8 | 8 cores per tile |
+| SoC | SMT_THREADS | 4 | 4-way SMT |
+| CPU | FETCH_WIDTH | 8 | 8 inst per block |
+| CPU | DECODE_WIDTH | 6 | 6-wide decoder |
+| CPU | DISPATCH_WIDTH | 12 | 12-wide dispatch |
+| CPU | RETIRE_WIDTH | 16 | 16-wide retire |
+| CPU | ROB_ENTRIES | 1024 | 1K-entry ROB |
+| CPU | INT_PRF_ENTRIES | 384 | Integer PRF |
+| CPU | FP_PRF_ENTRIES | 256 | FP PRF |
+| CPU | VEC_PRF_ENTRIES | 512 | Vector PRF (512-bit) |
+| CPU | INT_SCHED_DEPTH | 64 | Integer scheduler |
+| CPU | FP_SCHED_DEPTH | 48 | FP scheduler |
+| CPU | MEM_SCHED_DEPTH | 32 | Memory scheduler |
+| CPU | NUM_INT_ALU | 4 | 4x ALU |
+| CPU | NUM_FP_FMA | 2 | 2x FMA |
+| CPU | NUM_VEC_ALU | 2 | 2x vector ALU |
+| CPU | NUM_LD_PIPE | 4 | 4x load |
+| CPU | NUM_ST_PIPE | 4 | 4x store |
+| CPU | L1I_SIZE_KB | 64 | L1 I-Cache |
+| CPU | L1D_SIZE_KB | 64 | L1 D-Cache |
+| CPU | L2_SIZE_KB | 1024 | L2 (1 MB) |
+| CPU | L3_SIZE_MB | 64 | L3 shared |
+| AI | AI_TILES | 4 | 4 AI tiles |
+| AI | CLUSTERS_PER_TILE | 16 | 16 clusters |
+| AI | CUS_PER_CLUSTER | 4 | 4 CU per cluster |
+| AI | PE_ARRAY_DIM | 64 | 64×64 systolic |
+| AI | AI_L2_SIZE_MB | 64 | 64 MB L2 SRAM |
+| AI | HBM3_STACKS | 3 | 3 stacks per tile |
+| NoC | NOC_DATA_WIDTH | 512 | 512-bit flit |
+| NoC | NOC_VC | 4 | 4 virtual channels |
+| AIX | AIX_HANDLE_BITS | 16 | 16-bit handle |
+| AIX | AIX_TILEID_BITS | 3 | 3-bit tile ID (0–7) |
+| AIX | AIX_TDB_SIZE | 512 | 64 bytes descriptor |
+| ISA | XLEN | 64 | 64-bit RISC-V |
+| ISA | VLEN | 512 | 512-bit RVV |
 
-```systemverilog
-package orca_pkg;
-  // ---- 全域參數 ----
-  parameter int FETCH_WIDTH    = 12;
-  parameter int ISSUE_WIDTH    = 12;
-  parameter int RETIRE_WIDTH   = 16;
-  parameter int ROB_ENTRIES    = 512;
-  parameter int INT_SQ_ENTRIES = 96;
-  parameter int MEM_SQ_ENTRIES = 96;
-  parameter int FP_SQ_ENTRIES  = 64;
-  parameter int PHYS_REGS      = 409;
-  parameter int SMT_THREADS    = 4;
-
-  // ---- AI Tile 參數 ----
-  parameter int CLUSTERS_PER_TILE = 16;
-  parameter int CUS_PER_CLUSTER   = 4;
-  parameter int PE_ARRAY_DIM      = 64;
-  parameter int AI_L2_SIZE_MB     = 32;
-  parameter int HBM3_STACKS       = 3;
-  parameter int HBM3_CAPACITY_GB  = 24;
-
-  // ---- AIX 指令 opcode ----
-  typedef enum logic [6:0] {
-    AIX_OP_GEMM      = 7'h01,
-    AIX_OP_ATTN      = 7'h02,
-    AIX_OP_SPARSE_MM = 7'h03,
-    AIX_OP_CONV      = 7'h04,
-    AIX_OP_SYNC      = 7'h05,
-    AIX_OP_CFG       = 7'h06,
-    AIX_OP_DMA_LD    = 7'h07,
-    AIX_OP_DMA_ST    = 7'h08
-  } aix_opcode_t;
-
-  // ---- AIX TDB ----
-  typedef struct packed {
-    logic [63:0] base_addr;
-    logic [15:0] dim_m;
-    logic [15:0] dim_n;
-    logic [15:0] dim_k;
-    logic [31:0] stride;
-    logic [2:0]  dtype;
-    logic        sparse_en;
-  } aix_tdb_t;
-
-  // ---- µop ----
-  typedef struct packed {
-    logic [63:0] pc;
-    logic [4:0]  rs1, rs2, rd;
-    logic [63:0] imm;
-    logic [6:0]  opcode;
-    logic        is_rvc;
-    logic        is_aix;
-    aix_opcode_t aix_op;
-    logic [3:0]  aix_tdb0, aix_tdb1, aix_tdb2;
-    logic [7:0]  aix_flags;
-    logic [1:0]  smt_tid;
-    logic [8:0]  rob_idx;
-    // ... (其餘欄位)
-  } uop_t;
-endpackage
-```
-
-### 6.3 SoC 頂層介面
+### 6.3 頂層 SoC 介面摘要
 
 ```systemverilog
 module orca_v63_soc (
@@ -819,7 +1000,7 @@ M0  M3      M6      M9      M12     M15     M18     M21     M24
 ### 7.6 風險矩陣
 
 | 風險 | 機率 | 衝擊 | 風險值 | 緩解措施 | 應急計畫 |
-|------|------|------|--------|---------|---------|
+|------|------|------|--------|---------|--------|
 | 3nm 流片失敗 | 中 (30%) | 致命 (9) | 2.7 | 5nm 試產先行驗證 | 降規至 2.8 GHz、減少 SMT 至 2-way |
 | HBM3 供應短缺 | 中 (25%) | 高 (7) | 1.75 | 雙供應商策略 | 改用 LPDDR5X |
 | 關鍵人才流失 | 中 (20%) | 高 (8) | 1.6 | 競業條款、股票選擇權 | 與學術機構合作 |
@@ -846,7 +1027,7 @@ M0  M3      M6      M9      M12     M15     M18     M21     M24
 ### 7.8 成功指標（KPI）
 
 | 指標 | 目標 | 驗證方法 |
-|------|------|---------|
+|------|------|--------|
 | SPECint2017 (rate) | > 5.0 / core | 矽後實測 |
 | SPECfp2017 (rate) | > 6.0 / core | 矽後實測 |
 | MLPerf Inference (ResNet-50) | > 100,000 img/s @ INT8 | 矽後實測 |
@@ -860,7 +1041,7 @@ M0  M3      M6      M9      M12     M15     M18     M21     M24
 ### 7.9 關鍵決策點（Go/No-Go Gates）
 
 | 閘門 | 時間 | 決策內容 | 通過標準 |
-|------|------|---------|---------|
+|------|------|---------|--------|
 | G0: 專案啟動 | M0 | 是否投入 v6.3 開發 | 資金到位、團隊核心 5 人到齊 |
 | G1: 架構凍結 | M3 | 微架構是否凍結 | 所有介面簽核、風險評估通過 |
 | G2: RTL 凍結 | M9 | 是否進入實體設計 | 90% 功能覆蓋率、無重大架構變更 |
@@ -901,7 +1082,7 @@ M0  M3      M6      M9      M12     M15     M18     M21     M24
 ### 8.3 修訂歷史
 
 | 版本 | 日期 | 作者 | 變更內容 |
-|------|------|------|---------|
+|------|------|------|--------|
 | v0.1 | 2026-09-01 | 架構團隊 | 初稿：競爭分析 + 架構目標 |
 | v0.2 | 2026-09-03 | 架構團隊 | 新增 CPU 微架構設計 |
 | v0.3 | 2026-09-05 | 架構團隊 | 新增 AI 加速器設計 |
