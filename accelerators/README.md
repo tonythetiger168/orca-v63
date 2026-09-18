@@ -181,11 +181,11 @@ orca-ai-accelerators/
 ├── scripts/                  # Build & verification
 │   └── build_all.sh
 └── .github/                  # CI/CD workflows
-    └── workflows/
-        ├── rtl-lint.yml
-        ├── cpu-ci.yml
-        ├── docs-check.yml
-        └── code-quality.yml
+│   └── workflows/
+│       ├── rtl-lint.yml
+│       ├── cpu-ci.yml
+│       ├── docs-check.yml
+│       └── code-quality.yml
 ```
 
 ---
