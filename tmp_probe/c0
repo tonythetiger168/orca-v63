@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+#=============================================================================
+# ORCA v6.3 ZEN++ Regression Report Generator
+# File: scripts/generate_report.py
+# Description: Generates HTML report from regression results
+#=============================================================================
+
+import sys
+import os
+import glob
+import re
+from datetime import datetime
+
+def parse_log(log_file):
+    """Parse simulation log for key metrics."""
+    result = {
+        'status': 'UNKNOWN',
+        'errors': 0,
+        'warnings': 0,
+        'sim_time': 'N/A',
+        'coverage': 'N/A'
+    }
+
+    try:
+      

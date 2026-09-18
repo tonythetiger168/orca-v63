@@ -1,0 +1,19 @@
+border-bottom: 1px solid #ecf0f1; }}
+        tr:hover {{ background: #f8f9fa; }}
+        .status-pass {{ color: #27ae60; font-weight: bold; }}
+        .status-fail {{ color: #e74c3c; font-size: 2em; font-weight: bold; }}
+        .timestamp {{ color: #7f8c8d; font-size: 0.9em; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ORCA v6.3 ZEN++ Regression Report</h1>
+        <p class="timestamp">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+    </div>
+
+    <div class="summary">
+        <div class="card">
+            <div class="total">{total}</div>
+            <div>Total Tests</div>
+        </div>
+        <div cl

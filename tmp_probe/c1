@@ -1,0 +1,19 @@
+  with open(log_file, 'r') as f:
+            content = f.read()
+
+        if 'TEST PASSED' in content:
+            result['status'] = 'PASS'
+        elif 'TEST FAILED' in content:
+            result['status'] = 'FAIL'
+
+        # Count errors and warnings
+        result['errors'] = len(re.findall(r'UVM_ERROR', content))
+        result['warnings'] = len(re.findall(r'UVM_WARNING', content))
+
+        # Extract simulation time
+        time_match = re.search(r'Simulation time: ([\d.]+)s', content)
+        if time_match:
+            result['sim_time'] = time_match.group(1) + 's'
+
+        # Extract coverage
+        cov_match = re.searc
