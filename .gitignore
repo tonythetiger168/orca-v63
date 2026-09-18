@@ -1,0 +1,53 @@
+# Build artifacts
+build/
+csrc/
+simv*
+*.vpd
+*.vcd
+ucli.key
+verdiLog/
+novas*
+*.log
+
+# VCS
+simv.daidir/
+*.daidir/
+
+# Verilator
+obj_dir/
+
+# Vivado
+*.cache/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sim/
+*.srcs/
+*.xpr
+*.bit
+*.ltx
+
+# Coverage
+*.vdb/
+urgReport/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# Archives
+*.tar.gz
+*.zip
