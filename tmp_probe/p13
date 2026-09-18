@@ -1,0 +1,13 @@
+</th>
+            <th>Errors</th>
+            <th>Warnings</th>
+            <th>Sim Time</th>
+            <th>Coverage</th>
+        </tr>
+"""
+
+    for test in tests:
+        status_class = 'status-pass' if test['status'] == 'PASS' else 'status-fail'
+        html += f"""
+        <tr>
+            <td>{test['name']}</t

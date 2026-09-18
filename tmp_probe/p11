@@ -1,0 +1,10 @@
+        <h1>ORCA v6.3 ZEN++ Regression Report</h1>
+        <p class="timestamp">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+    </div>
+
+    <div class="summary">
+        <div class="card">
+            <div class="total">{total}</div>
+            <div>Total Tests</div>
+        </div>
+        <div cl

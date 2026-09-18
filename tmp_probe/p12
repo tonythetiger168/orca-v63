@@ -1,0 +1,14 @@
+ass="card">
+            <div class="pass">{pass_count}</div>
+            <div>Passed</div>
+        </div>
+        <div class="card">
+            <div class="fail">{fail_count}</div>
+            <div>Failed</div>
+        </div>
+    </div>
+
+    <table>
+        <tr>
+            <th>Test Name</th>
+            <th>Status

@@ -1,0 +1,8 @@
+  for test_dir in sorted(glob.glob(os.path.join(regression_dir, '*'))):
+        if os.path.isdir(test_dir):
+            test_name = os.path.basename(test_dir)
+            log_file = os.path.join(test_dir, 'sim.log')
+
+            if os.path.exists(log_file):
+                metrics = parse_log(log_file)
+             

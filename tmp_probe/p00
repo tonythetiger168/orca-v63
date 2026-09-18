@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+#=============================================================================
+# ORCA v6.3 ZEN++ Regression Report Generator
+# File: scripts/generate_report.py
+# Description: Generates HTML report from regression results
+#========================================================================

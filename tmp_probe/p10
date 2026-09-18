@@ -1,0 +1,9 @@
+border-bottom: 1px solid #ecf0f1; }}
+        tr:hover {{ background: #f8f9fa; }}
+        .status-pass {{ color: #27ae60; font-size: 2em; font-weight: bold; }}
+        .status-fail {{ color: #e74c3c; font-size: 2em; font-weight: bold; }}
+        .timestamp {{ color: #7f8c8d; font-size: 0.9em; }}
+    </style>
+</head>
+<body>
+    <div class="header">

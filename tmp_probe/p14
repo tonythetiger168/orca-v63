@@ -1,0 +1,16 @@
+d>
+            <td class="{status_class}">{test['status']}</td>
+            <td>{test['errors']}</td>
+            <td>{test['warnings']}</td>
+            <td>{test['sim_time']}</td>
+            <td>{test['coverage']}</td>
+        </tr>
+"""
+
+    html += """
+    </table>
+</body>
+</html>
+"""
+
+    report_file = os.path.
