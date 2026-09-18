@@ -302,7 +302,7 @@ module orca_v63_cpu_core
   // v6.3.3 robfix: lsu_st completion (新增 port 的接收訊號)
   /* verilator coverage_off */ logic        st_rv   [NUM_ST_PIPE]; /* verilator coverage_on */  // COV-EXEMPT: 同上 (store)
   /* verilator coverage_off */ rob_idx_t    st_ri   [NUM_ST_PIPE]; /* verilator coverage_on */  // COV-EXEMPT: st_ri 對應 store 完成 lane, 結構閒置 (同上) /* verilator coverage_off */ // cov: 宣告行(多訊號/別名), Verilator 5.006 toggle 不計入行 DA (tool limit)
-  /* verilator coverage_off */ logic        st_exc  [NUM_ST_PIPE]; /* verilator coverage_on */  // COV-EXEMPT: 同上 (store)
+  /* verilator coverage_off */ logic        st_exc  [NUM_ST_PIPE]; /* verilator coverage_on */ /* verilator coverage_on */  // COV-EXEMPT: 同上 (store)
   exception_t  st_excc [NUM_ST_PIPE];
 
   always_comb begin
