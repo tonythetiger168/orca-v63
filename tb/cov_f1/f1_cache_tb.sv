@@ -105,8 +105,7 @@ module f1_cache_tb;
       @(negedge clk);
     end
     // wb_valid 在「全 way valid 後的 miss」當拍為 1 (combinationl), 此處於
-    // fill 週期中段 (#1) 採樣 (k=8 起 dcache/icache 滿 8 way; k=16 起 l2/
-l3 滿 16 way)
+    // fill 週期中段 (#1) 採樣 (k=8 起 dcache/icache 滿 8 way; k=16 起 l2/l3 滿 16 way)
     if (!wb_seen_d)  begin $display("ERROR: dcache wb_valid 未拉起"); errors++; end
     if (!wb_seen_i)  begin $display("ERROR: icache wb_valid 未拉起"); errors++; end
     if (!wb_seen_l2) begin $display("ERROR: l2cache wb_valid 未拉起"); errors++; end
