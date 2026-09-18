@@ -1,5 +1,0 @@
- {{ display: flex; gap: 20px; margin: 20px 0; }}
-        .card {{ background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex: 1; }}
-        .pass {{ color: #27ae60; font-size: 2em; font-weight: bold; }}
-        .fail {{ color: #e74c3c; font-size: 2em; font-weight: bold; }}
-    
