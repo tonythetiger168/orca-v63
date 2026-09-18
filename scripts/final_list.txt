@@ -1,0 +1,44 @@
+tb_top|tb_top|CPU|tb/cpu_tile_tb/tb_top.sv
+cpu_directed_tb|cpu_directed_tb|CPU|tb/cpu_tile_tb/cpu_directed_tb.sv
+orca_noc_tb|orca_noc_tb|rtl/common/orca_pkg.sv rtl/noc/*.sv|tb/noc_tb/orca_noc_tb.sv
+ai_tile_smoke_tb|ai_tile_smoke_tb|AI|tb/ai_tile_tb/ai_tile_smoke_tb.sv
+attn_smoke_tb|attn_smoke_tb|AI|tb/ai_tile_tb/attn_smoke_tb.sv
+f1_decode_tb|f1_decode_tb|rtl/common/orca_pkg.sv rtl/cpu/decode/*.sv rtl/cpu/frontend/ifu_fetch.sv rtl/cpu/frontend/ifu_btb.sv rtl/cpu/cache/icache.sv|tb/cov_f1/f1_decode_tb.sv
+f1_cache_tb|f1_cache_tb|rtl/common/orca_pkg.sv rtl/cpu/cache/*.sv|tb/cov_f1/f1_cache_tb.sv
+f1_frontend_tb|f1_frontend_tb|rtl/common/orca_pkg.sv rtl/cpu/frontend/ifu_fetch.sv rtl/cpu/frontend/ifu_btb.sv rtl/cpu/decode/*.sv|tb/cov_f1/f1_frontend_tb.sv
+f1_cpu_tile_tb|f1_cpu_tile_tb|TILE|tb/cov_f1/f1_cpu_tile_tb.sv
+exu_alu_cov_tb|exu_alu_cov_tb|rtl/common/orca_pkg.sv rtl/cpu/execution/exu_alu.sv|tb/cov_f2/exu_alu_cov_tb.sv
+exu_mul_cov_tb|exu_mul_cov_tb|rtl/common/orca_pkg.sv rtl/cpu/execution/exu_mul.sv|tb/cov_f2/exu_mul_cov_tb.sv
+exu_vec_cov_tb|exu_vec_cov_tb|rtl/common/orca_pkg.sv rtl/cpu/execution/exu_vec.sv|tb/cov_f2/exu_vec_cov_tb.sv
+exu_fpu_cov_tb|exu_fpu_cov_tb|rtl/common/orca_pkg.sv rtl/cpu/execution/exu_fpu.sv|tb/cov_f2/exu_fpu_cov_tb.sv
+exu_bru_crypto_cov_tb|exu_bru_crypto_cov_tb|rtl/common/orca_pkg.sv rtl/cpu/execution/exu_bru.sv rtl/cpu/execution/exu_crypto.sv|tb/cov_f2/exu_bru_crypto_cov_tb.sv
+prf_cov_tb|prf_cov_tb|rtl/common/orca_pkg.sv rtl/cpu/execution/prf.sv|tb/cov_f2/prf_cov_tb.sv
+f3_cmt_tb|f3_cmt_tb|rtl/common/orca_pkg.sv rtl/cpu/commit/*.sv|tb/cov_f3/f3_cmt_tb.sv
+f3_rnu_isu_tb|f3_rnu_isu_tb|rtl/common/orca_pkg.sv rtl/cpu/rename/*.sv rtl/cpu/scheduler/isu_int.sv|tb/cov_f3/f3_rnu_isu_tb.sv
+f3_lsu_ls_tb|f3_lsu_ls_tb|rtl/common/orca_pkg.sv rtl/cpu/memory/lsu_ld.sv rtl/cpu/memory/lsu_st.sv|tb/cov_f3/f3_lsu_ls_tb.sv
+f3_lsu_misc_tb|f3_lsu_misc_tb|rtl/common/orca_pkg.sv rtl/cpu/memory/lsu_mshr.sv rtl/cpu/memory/lsu_dtlb.sv rtl/cpu/memory/lsu_dcache.sv rtl/cpu/cache/dcache.sv|tb/cov_f3/f3_lsu_misc_tb.sv
+f3_core_poke_tb|f3_core_poke_tb|CPU|tb/cov_f3/f3_core_poke_tb.sv
+f4_hbm3_ctrl_tb|f4_hbm3_ctrl_tb|rtl/common/orca_pkg.sv rtl/ai/memory/npu_hbm3_ctrl.sv|tb/cov_f4/f4_hbm3_ctrl_tb.sv
+f4_attn_engine_tb|f4_attn_engine_tb|rtl/common/orca_pkg.sv rtl/ai/attention/npu_attn_engine.sv rtl/ai/memory/npu_l2_sram.sv|tb/cov_f4/f4_attn_engine_tb.sv
+f4_pe_tb|f4_pe_tb|rtl/common/orca_pkg.sv rtl/ai/pe/npu_pe.sv|tb/cov_f4/f4_pe_tb.sv
+f4_dma_tb|f4_dma_tb|rtl/common/orca_pkg.sv rtl/ai/ctrl/npu_dma.sv|tb/cov_f4/f4_dma_tb.sv
+f4_systolic_tb|f4_systolic_tb|rtl/common/orca_pkg.sv rtl/ai/pe/npu_systolic.sv rtl/ai/pe/npu_pe.sv|tb/cov_f4/f4_systolic_tb.sv
+f4_tile_noc_tb|f4_tile_noc_tb|rtl/common/orca_pkg.sv rtl/ai/noc/npu_tile_noc.sv rtl/noc/orca_flit_adapter.sv|tb/cov_f4/f4_tile_noc_tb.sv
+f4_ai_tile_tb|f4_ai_tile_tb|AI|tb/cov_f4/f4_ai_tile_tb.sv
+f4_cu_tb|f4_cu_tb|rtl/common/orca_pkg.sv rtl/ai/cluster/npu_cu.sv rtl/ai/pe/*.sv|tb/cov_f4/f4_cu_tb.sv
+f4_aix_intf_tb|f4_aix_intf_tb|rtl/common/orca_pkg.sv rtl/ai/ctrl/npu_aix_intf.sv|tb/cov_f4/f4_aix_intf_tb.sv
+f4_hbm3_phy_tb|f4_hbm3_phy_tb|rtl/common/orca_pkg.sv rtl/ai/memory/npu_hbm3_phy.sv|tb/cov_f4/f4_hbm3_phy_tb.sv
+f4_gscu_tb|f4_gscu_tb|rtl/common/orca_pkg.sv rtl/ai/ctrl/npu_gscu.sv|tb/cov_f4/f4_gscu_tb.sv
+f4_l2_sram_tb|f4_l2_sram_tb|rtl/common/orca_pkg.sv rtl/ai/memory/npu_l2_sram.sv|tb/cov_f4/f4_l2_sram_tb.sv
+f4_cluster_tb|f4_cluster_tb|AI|tb/cov_f4/f4_cluster_tb.sv
+noc_link_retry_tb|orca_noc_link_retry_tb|rtl/common/orca_pkg.sv rtl/noc/orca_noc_link.sv|tb/cov_f5/orca_noc_link_retry_tb.sv
+noc_router_cov_tb|orca_noc_router_cov_tb|rtl/common/orca_pkg.sv rtl/noc/orca_noc_router.sv|tb/cov_f5/orca_noc_router_cov_tb.sv
+flit_adapter_cov_tb|orca_flit_adapter_cov_tb|rtl/common/orca_pkg.sv rtl/noc/orca_flit_adapter.sv|tb/cov_f5/orca_flit_adapter_cov_tb.sv
+bow_link_cov_tb|orca_bow_link_cov_tb|rtl/common/orca_pkg.sv rtl/noc/orca_bow_link.sv|tb/cov_f5/orca_bow_link_cov_tb.sv
+chi_coh_cov_tb|orca_chi_coh_cov_tb|rtl/common/orca_pkg.sv rtl/noc/orca_chi_coh.sv|tb/cov_f5/orca_chi_coh_cov_tb.sv
+ddr5_ctrl_cov_tb|ddr5_ctrl_cov_tb|rtl/common/orca_pkg.sv rtl/pad/ddr5_ctrl.sv|tb/cov_f5/ddr5_ctrl_cov_tb.sv
+gpio_pad_cov_tb|gpio_pad_cov_tb|rtl/common/orca_pkg.sv rtl/pad/gpio_pad.sv|tb/cov_f5/gpio_pad_cov_tb.sv
+pcie_gen6_cov_tb|pcie_gen6_cov_tb|rtl/common/orca_pkg.sv rtl/pad/pcie_gen6.sv|tb/cov_f5/pcie_gen6_cov_tb.sv
+f4_acc_tb|f4_acc_tb|rtl/common/orca_pkg.sv rtl/ai/pe/npu_acc.sv|tb/cov_f4/f4_acc_tb.sv
+soc_smoke_tb|soc_smoke_tb|SOC|tb/cov_soc/soc_smoke_tb.sv
+soc_east_tb|soc_east_tb|rtl/common/orca_pkg.sv tb/cov_soc/stub_tiles_east.sv rtl/noc/orca_flit_adapter.sv rtl/noc/orca_noc_router.sv rtl/pad/*.sv rtl/noc/orca_bow_link.sv rtl/soc/orca_v63_soc.sv|tb/cov_soc/soc_east_tb.sv
