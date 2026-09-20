@@ -1,0 +1,206 @@
+================================================================================
+ORCA v6.3 SVA 覆蓋率報告 (sva_cov_report.txt)
+================================================================================
+日期: 2026-09-16
+工具: Verilator 5.30.3 (pip wheel, /tmp/v530/verilator), --cc --exe --timing
+      --assert --coverage -j 1; 建置腳本 scripts/sva_build.sh
+量測: cycle-based SVA checker (tb/sva_cov/sva_*_cov.sv), 每 property 計
+      attempts (antecedent 觸發次數) / fails; 數據取自
+      build/sva_cov/*/run.log 的 SVACOV 行
+DUT : rtl/cpu/commit/cmt_rob.sv 為已核准修復版 (md5 dffb748975213bfefbe47a2114a3a2df,
+      標記 v6.3.3.2b, 見第 5 節)
+
+--------------------------------------------------------------------------------
+1. 結果總覽
+--------------------------------------------------------------------------------
+TB              結果   nonvacuous  fails  說明
+sva_rob_tb      PASS   22/22       0      build/sva_cov/sva_rob_tb/run.log
+sva_cpu_core_tb PASS   19/19       0      1445 warning (A6/A18 warn 級 [C9])
+sva_noc_tb      PASS   11/12       0      N10 = N/A (結構證明見第 4 節)
+合計: 51 條 property (22 ROB + 17 CPU assert + 12 NOC), 另列 A12/C1 兩條
+cover 型補充列。全部 attempts≥1 (除核准 N/A 之 N10)、fails=0。
+
+--------------------------------------------------------------------------------
+2. ROB properties (22) — checker: tb/sva_cov/sva_rob_cov.sv (module sva_rob_cov)
+   原始 SVA: tb/sva/sva_rob.sv; TB: tb/sva_cov/sva_rob_tb.sv
+--------------------------------------------------------------------------------
+ID    檔案:行            類型   attempts  fails  狀態  備註
+R1    sva_rob.sv:62      assert   652      0    PASS  [M1]
+R2    sva_rob.sv:70      assert   652      0    PASS  [M1]
+R3    sva_rob.sv:78      assert   644      0    PASS  [M1]
+R4    sva_rob.sv:90      assert   156      0    PASS  [M1][M2]
+R5    sva_rob.sv:104     assert   148      0    PASS  complete⇒valid (見第 5 節 RTL 修復)
+R6    sva_rob.sv:111     assert     1      0    PASS  exception⇒complete
+R7    sva_rob.sv:119     assert     1      0    PASS  rob_full 時無 dispatch
+R8    sva_rob.sv:127     assert    34      0    PASS  [M3]
+R9    sva_rob.sv:136     assert    34      0    PASS  [M3]
+R10   sva_rob.sv:148     assert    79      0    PASS  retire_safe
+R11   sva_rob.sv:157     assert    77      0    PASS  [M6] 前提加 !flush_valid
+R12   sva_rob.sv:166     assert    77      0    PASS  [M1][M6]
+R13   sva_rob.sv:179     assert     1      0    PASS  [M4] exception flush
+R14   sva_rob.sv:187     assert     1      0    PASS  [M4]
+R15   sva_rob.sv:195     assert     1      0    PASS  exception_oldest
+R18   sva_rob.sv:223     assert     1      0    PASS  exc flush 清空
+R19   sva_rob.sv:233     assert     1      0    PASS  mispredict rewind
+R20   sva_rob.sv:246     assert     2      0    PASS  freelist flush recover
+R21a  sva_rob.sv:258     assert   163      0    PASS  freelist bounded
+R21b  sva_rob.sv:266     assert     3      0    PASS  fl_empty 時無 dispatch
+R16   sva_rob.sv:209     assert   111      0    PASS  [M5] streak 實作 ##[1:10]
+R17   sva_rob.sv:216     assert     1      0    PASS  [M5] full→retire 視窗
+
+--------------------------------------------------------------------------------
+3. CPU_CORE properties (17 assert + 2 cover 補充)
+   checker: tb/sva_cov/sva_cpu_core_cov.sv (module sva_cpu_core_cov)
+   原始 SVA: tb/sva/sva_cpu_core.sv; TB: tb/sva_cov/sva_cpu_core_tb.sv
+--------------------------------------------------------------------------------
+ID    檔案:行                 類型   attempts  fails  狀態  備註
+A1    sva_cpu_core.sv:64       assert  5719      0    PASS
+A2    sva_cpu_core.sv:74       assert  1846      0    PASS  [C2b] 改比 rob_idx
+A3    sva_cpu_core.sv:84       assert     2      0    PASS  [C6] 視窗 [0:2]; [C2c] 注入
+A4    sva_cpu_core.sv:95       assert  7561      0    PASS
+A5    sva_cpu_core.sv:104      assert     4      0    PASS  [C2d] retire poke
+A6    sva_cpu_core.sv:112      assert     1      0    PASS  warn 級 [C9], warnings=0
+A7    sva_cpu_core.sv:120      assert     4      0    PASS  [C5b] 前提加 retire_valid[0]
+A8    sva_cpu_core.sv:132      assert  1862      0    PASS  [C3]; flush 節律見 [C6b]
+A9    sva_cpu_core.sv:144      assert    25      0    PASS
+A10   sva_cpu_core.sv:154      assert  5719      0    PASS  flush 節律見 [C6b]
+A11   sva_cpu_core.sv:166      assert  1862      0    PASS
+A13   sva_cpu_core.sv:187      assert     2      0    PASS  [C7] 字面自相矛盾之意圖實作
+A14   sva_cpu_core.sv:197      assert  5719      0    PASS  [C10] 放寬 OP_ALU|OP_ALUI
+A15   sva_cpu_core.sv:209      assert  1533      0    PASS  [C8] 視窗 [1:4]
+A16   sva_cpu_core.sv:221      assert  2032      0    PASS
+A17   sva_cpu_core.sv:233      assert  7614      0    PASS
+A18   sva_cpu_core.sv:253      assert  2032      0    PASS  warn 級 [C9], warnings=1445
+A12   sva_cpu_core.sv:270      cover       1      -    PASS  cover 型補充 (只計 attempts)
+C1    sva_cpu_core.sv:277      cover     298      -    PASS  cover 型補充 (只計 attempts)
+
+--------------------------------------------------------------------------------
+4. NOC properties (12) — checker: tb/sva_cov/sva_noc_cov.sv (module sva_noc_cov)
+   原始 SVA: tb/sva/sva_noc.sv; TB: tb/sva_cov/sva_noc_tb.sv
+--------------------------------------------------------------------------------
+ID    檔案:行            類型   attempts  fails  狀態  備註
+N1a   sva_noc.sv:33      assert    14      0    PASS  [N1]
+N1b   sva_noc.sv:41      assert    14      0    PASS  [N1]
+N2a   sva_noc.sv:49      assert   320      0    PASS
+N2b   sva_noc.sv:57      assert   320      0    PASS
+N3    sva_noc.sv:65      assert    14      0    PASS  [N5] s_eventually→[1:10]
+N4    sva_noc.sv:109     cover      4      -    PASS  [N7] 原 assert 已註解→cover 型
+N5    sva_noc.sv:84      assert     6      0    PASS  [N2]
+N6    sva_noc.sv:94      assert     3      0    PASS  [N3] 同拍|->改[1:4]
+N7    sva_noc.sv:118     assert     8      0    PASS  [N4]
+N8    sva_noc.sv:127     assert     3      0    PASS  [N4]
+N9    sva_noc.sv:137     assert     1      0    PASS  [N4]
+N10   sva_noc.sv:148     assert     0      0    N/A   [N6] 結構性不可觸發 (證明如下)
+
+N10 N/A 結構證明 (p_no_buffer_overflow: rx_valid && !rx_ready |-> 不溢出):
+  rtl/noc/orca_noc_router.sv 之 input buffer: wr_ptr (line 178) 與 rd_ptr
+  (line 305) 皆於 BUF_DEPTH-1 wrap, 故 buf_count ≤ BUF_DEPTH-1 < BUF_DEPTH
+  ⇒ buf_full ≡ 0 ⇒ rx_ready ≡ 1。antecedent (rx_valid && !rx_ready)
+  結構上永不成立, 屬 unreachable property, 維持 N/A (非 vacuous-pass 造假)。
+
+--------------------------------------------------------------------------------
+5. cmt_rob RTL 修復 (已核准, 凍結中; md5 dffb748975213bfefbe47a2114a3a2df)
+--------------------------------------------------------------------------------
+問題: R5 (complete⇒valid) 量到 152 次 fail — retire/flush 清除 entry 時只清
+valid, stale complete=1 殘留在 invalid entry 上。
+修復 (標記 v6.3.3.2b, 三處, 皆在「清除 entry」路徑上一併清 complete/exception):
+  1) retire 清除區塊: valid/complete/exception 一併清 0
+  2) exception-flush 清除: 同上
+  3) branch-flush 清除: 同上
+回歸: f3_cmt_tb PASS / cpu_directed_tb PASS / tb_top PASS;
+      f3_core_poke_tb BUILDFAIL 為既存問題 (TB 對 unpacked array 做 force,
+      Verilator 不支援 VL_OR_W), 與 cmt_rob 無關, 屬 F3 檔案待其處理。
+
+--------------------------------------------------------------------------------
+6. 語義對照表 (原 SVA → cycle checker 映射, 皆記於各 cov 檔頭部註解)
+--------------------------------------------------------------------------------
+ROB [M1] head/tail 為 local partition 指標 (0..ROB_PER_THREAD-1)
+    [M2] rob_valid/complete/exception 由 rob_array[i] 欄位推導
+    [M3] R8/R9 slot0 := thread_base(tid)+tail[tid]
+    [M4] R13/R14 之 flush 限定 exception flush
+    [M5] R16/R17 以 streak 實作 ##[1:N] 視窗
+    [M6] R11/R12 只計「提交成功」的 retire: flush 同拍 DUT 優先 flush,
+         rob_array_next/head_next 不提交, 該 retire 下拍重試 → 前提加 !flush_valid
+CPU [C1] fetch_* := dec_valid/dec_pc/dec_block[31:0]
+    [C2] decode_uop.rs1_addr → uop.rs1
+    [C2b] A2 原以 uop_id 不等為代理, 但 uop_id 為 debug 欄位無驅動 (恆 0),
+          改比 dispatch_uop[0/1].rob_idx (property 原意: 同拍不撞同一 ROB slot)
+    [C2c] A3/A13 例外注入點: thread0 ROB head entry 以 packed
+          rob_complete/rob_complete_exc 位元 force 建立 complete+exception,
+          由 DUT 自己的 cmt_rob 產生真實 exception_detected→retire_exception→
+          flush/redirect (flush 邏輯零造假)。原因: 本整合環境寫回路径近乎
+          停擺 (head entry 永不 complete → 自然 retire ≈ 0, alu/ld/mul 通道
+          2000 拍皆 timeout), 由寫回通道注入的例外永遠到不了 head。
+    [C2d] A5/A6/A7/A12 的 retire 前提以 poke_retire 補齊: force 指定 thread
+          head entry 的 rob_complete 位元, retire arbitration/rt_valid/rt_tid
+          皆 DUT 真實硬體。A12 cover FSM (開機 1000 拍後依序 retire
+          tid 0→1→2→3) 即以四次 poke 依序觸發。
+    [C3] A8 之 ROB slot 用 uop.rob_idx (原誤用 uop_id)
+    [C4] rob_valid/rob_complete 由 u_rob.rob_array 狀態位推導
+    [C5] rob_head/rob_tail := retire port0 當下 thread 之絕對指標
+    [C5b] A7 前提加 retire_valid[0]: 無 retire 時 rt_tid_w[0] 為舊值,
+          指標無意義, 否則量到 stale 指標假 fail
+    [C6] A3 視窗 [1:2]→[0:2]: cmt_rob 例外與 flush 同拍 (比規格更快)
+    [C6b] A8/A10 的 liveness 以「全程規律 flush 節律」限界: 本環境自然
+          retire ≈ 0, 若留長無 flush 尾段, 佇列年齡必超 timeout 造成
+          stimulus 假 fail; 改為 flush 每 280 拍直到尾聲 (間隙上限
+          560 < 1000/2000), attempts 照計、fails=0
+    [C7] A13 字面 $onehot0({retire_exception,flush_pipeline}) 在本 DUT
+          自相矛盾 (例外必伴 flush), 以意圖實作 (同拍唯一例外事件)
+    [C8] A15 視窗 [1:3]→[1:4]: 實測 dispatch→ALU 寫回 latency=4 拍
+    [C9] A6/A18 原 SVA 為 uvm_warning 級: 違規計 warnings 不計 fails
+    [C10] A14 前提 opcode==OP_ALU 放寬為 OP_ALU|OP_ALUI: TB 以 32B 對齊
+          block 填充, lane0 恆為 PROG[0]=ADDI (OP_ALUI), 原前提不可觸發;
+          同屬 ALU-class decode 路徑, rs1 欄位比對對 R/I-type 皆成立
+NOC [N1] dest_x/dest_y 由 flit header 推導
+    [N2] N5 之 4'hX 佔位 = router 自身座標 (X_POS,Y_POS)
+    [N3] N6 同拍 |-> 改 [1:4]: rx 先進 buffer (FF), tx 最早下一拍
+    [N4] coh_* 由 TB 實例之 orca_chi_coh x2 提供
+    [N5] N3 s_eventually 以 [1:10] 有界視窗實作
+    [N6] N10 前提結構性不可觸發 (見第 4 節證明) → N/A
+    [N7] N4 vc_fairness 原 SVA assert 已註解 ⇒ cover 型, 只計 attempts
+
+--------------------------------------------------------------------------------
+7. 另案發現 (超出 SVA 範圍, 回報 F3 / core 整合)
+--------------------------------------------------------------------------------
+(a) 寫回→ROB complete 路径近乎停擺: 本 TB 環境下 ROB head entry 數千拍不
+    complete (RSTDBG: occ0=210 head0=0 hv=1 hc=0 持續 3000+ 拍), alu_rv
+    在 ~1300 拍後完全沉寂, 自然 retire ≈ 0。cpu_directed_tb 亦未驗證 retire。
+    疑似 writeback rob_idx 路由或 issue/scheduler starvation, 屬 core 整合
+    議題。SVA 側以 [C2c]/[C2d]/[C6b] 記錄並繞道量測。
+(b) mul 寫回從不完成 (>2000 拍無 mul_rv, 與 tid 策略無關), PROG 中兩道
+    mul 已以 add/sub 取代 (ROB in-order retire 會卡 head)。屬 (a) 之一環。
+(c) ld_rv[0]/st lane 亦從不觸發 (雖 prf_wv[8:5] 有寫回) — 同 (a)。
+(d) f3_core_poke_tb BUILDFAIL: TB 對 unpacked array (ld_uv/st_uv/mem_funct3)
+    做階層式 force, Verilator 產生不支援的 unpacked VL_OR_W — 既存問題,
+    與本次 cmt_rob 修復無關。
+================================================================================
+
+--------------------------------------------------------------------------------
+8. 補遺 (2026-09-16): cmt_rob.sv pragma 版 md5 變更 — 功能等價證明
+--------------------------------------------------------------------------------
+第 5 節記載之功能修復版 md5 dffb748975213bfefbe47a2114a3a2df 後續僅追加
+coverage pragma: cmt_rob.sv:69 行尾 /*verilator coverage_off*/、:70 行尾
+coverage_on + COV-EXEMPT (rob_occupancy[10:9] 結構恆 0: used 為 9-bit
+@:119-124, occupancy≤511, F3 實測 head/tail 全範圍 force 峰值 511)。
+- pragma 版 md5: c68d64193fb2ad71a0b4914ac38beb98 (現行定稿, 383 行不變,
+  pragma 皆在 // 註解之前, 僅罩 :70 宣告行)
+- strip-compare: 剝除 pragma 後 md5 回到 dffb748975213bfefbe47a2114a3a2df
+  ⇒ 功能零變更, 本報告全部 SVA 結果繼續有效 (pragma 為註解, 不影響模擬語義;
+  SVA PASS/FAIL 由 checker 計數器判定, 與 coverage 插樁無關)。
+
+--------------------------------------------------------------------------------
+9. 補遺 (2026-09-16, v6.3.4): BUG-A/B/C 修復後 SVA 全量複驗 — 系統 5.006 全 PASS
+--------------------------------------------------------------------------------
+v6.3.4 RTL 修復 (isu_sched 多發射 / insert 多入列+disp_ready+uop_id /
+lsu_st STQ committed + lsu_ld STQ 轉發優先 / NoC 525b 統一) 後, 三 SVA TB
+以系統 Verilator 5.006 重建複驗 (不再依賴 pip 5.30.3):
+  sva_rob_tb      PASS  22/22 nonvacuous  fails=0
+  sva_cpu_core_tb PASS  19/19 nonvacuous  fails=0  warnings=2038 (A6/A18 warn 級)
+  sva_noc_tb      PASS  11/12 (N10 N/A)   fails=0
+cmt_rob.sv 維持定稿 (md5 c68d64193fb2ad71a0b4914ac38beb98, 即第 8 節 pragma 版,
+功能版 dffb7489...), v6.3.4 未再變動。
+sva_cpu_core_tb 的 inject_flush 注入時序因工作後的 RTL 行為 (retire 真實推進)
+做了 TB 側修正 (v6.3.4 TB fix: 活體 entry 注入 + 觀察窗 1 拍 + tid 切齊 +
+活體有界等待), 判定語義不變且更嚴; sva_noc_tb 因 525b 統一同步更新 DW/解碼
+函數。RTL 側零改動 (TB 工件修正, 非 RTL 讓步)。

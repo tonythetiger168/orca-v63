@@ -1,0 +1,8 @@
+build/
+*.vvp
+*.log
+__pycache__/
+coverage.dat
+coverage.info
+*.bundle
+dv/out_*
